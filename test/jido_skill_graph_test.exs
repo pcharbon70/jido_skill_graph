@@ -9,6 +9,7 @@ defmodule JidoSkillGraphTest do
 
     assert snapshot.graph_id == "knowledge-work"
     assert snapshot.version == 0
+    assert match?(%Graph{}, snapshot.graph)
     assert Map.keys(snapshot.nodes) |> Enum.sort() == ["alpha", "beta"]
     assert Enum.any?(snapshot.edges, &(&1.from == "alpha" and &1.to == "beta"))
     assert snapshot.unresolved_link_policy == :warn_and_skip
