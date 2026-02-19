@@ -2,13 +2,13 @@
 
 `JidoSkillGraph` is a standalone Elixir library for building and querying markdown-based skill graphs.
 
-## Phase 2 Status
+## Phase 3 Status
 
-This phase establishes the package bootstrap and architecture skeleton:
+This phase establishes strict contracts for core graph models:
 
-- supervised runtime entrypoint (`JidoSkillGraph.child_spec/1`)
-- pure builder entrypoint (`JidoSkillGraph.Builder.build/1`)
-- core module layout for manifest, builder, extraction, store, loader, watcher, and search backend behavior
+- `JidoSkillGraph.Node` for identity and metadata
+- `JidoSkillGraph.Edge` for typed relation taxonomy
+- `JidoSkillGraph.Snapshot` for model validation and unresolved-link policy handling
 
 ## Development
 
