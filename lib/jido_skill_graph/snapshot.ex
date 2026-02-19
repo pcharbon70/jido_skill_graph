@@ -23,7 +23,7 @@ defmodule JidoSkillGraph.Snapshot do
   ]
 
   @type t :: %__MODULE__{
-          graph: term(),
+          graph: Graph.t() | nil,
           graph_id: String.t(),
           manifest: term(),
           version: non_neg_integer(),
@@ -35,7 +35,7 @@ defmodule JidoSkillGraph.Snapshot do
         }
 
   @type option ::
-          {:graph, term()}
+          {:graph, Graph.t() | nil}
           | {:graph_id, String.t()}
           | {:manifest, term()}
           | {:version, non_neg_integer()}

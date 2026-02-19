@@ -3,7 +3,7 @@ defmodule JidoSkillGraph.Builder do
   Build pipeline entrypoint: discover -> parse -> extract -> resolve -> snapshot.
   """
 
-  alias JidoSkillGraph.{Discovery, Edge, LinkExtractor, Node, SkillFile, Snapshot}
+  alias JidoSkillGraph.{Discovery, Edge, LinkExtractor, Node, SkillFile, Snapshot, Topology}
 
   @type snapshot :: Snapshot.t()
 
@@ -29,25 +29,70 @@ defmodule JidoSkillGraph.Builder do
     with {:ok, discovery} <- discover(opts),
          {:ok, graph_id} <- resolve_graph_id(opts, discovery),
          {:ok, nodes, link_specs} <- parse_nodes(discovery.files, discovery.root, graph_id),
-         {:ok, edges, warnings} <- resolve_links(nodes, link_specs) do
-      Snapshot.new(
-        graph: nil,
-        graph_id: graph_id,
-        manifest: discovery.manifest,
-        version: Keyword.get(opts, :version, 0),
-        nodes: nodes,
-        edges: edges,
-        unresolved_link_policy: Keyword.get(opts, :unresolved_link_policy, :warn_and_skip),
-        warnings: warnings,
-        stats: %{
-          mode: :pure,
-          files: length(discovery.files),
-          nodes: length(nodes),
-          extracted_links: length(link_specs),
-          resolved_edges: length(edges)
-        }
-      )
+         {:ok, edges, warnings} <- resolve_links(nodes, link_specs),
+         do: build_snapshot(opts, discovery, graph_id, nodes, edges, warnings, link_specs)
+  end
+
+  defp build_snapshot(opts, discovery, graph_id, nodes, edges, warnings, link_specs) do
+    with {:ok, snapshot} <-
+           Snapshot.new(
+             graph: nil,
+             graph_id: graph_id,
+             manifest: discovery.manifest,
+             version: Keyword.get(opts, :version, 0),
+             nodes: nodes,
+             edges: edges,
+             unresolved_link_policy: Keyword.get(opts, :unresolved_link_policy, :warn_and_skip),
+             warnings: warnings,
+             stats: %{
+               mode: :pure,
+               files: length(discovery.files),
+               parsed_nodes: length(nodes),
+               extracted_links: length(link_specs),
+               parsed_edges: length(edges)
+             }
+           ) do
+      graph = Topology.build(snapshot.nodes, snapshot.edges)
+
+      stats =
+        snapshot.stats
+        |> Map.merge(%{
+          graph_vertices: Graph.num_vertices(graph),
+          graph_edges: Graph.num_edges(graph),
+          snapshot_checksum: snapshot_checksum(snapshot)
+        })
+
+      {:ok, %{snapshot | graph: graph, stats: stats}}
     end
+  end
+
+  defp snapshot_checksum(%Snapshot{} = snapshot) do
+    payload = %{
+      graph_id: snapshot.graph_id,
+      version: snapshot.version,
+      nodes: snapshot_digest_nodes(snapshot.nodes),
+      edges: snapshot_digest_edges(snapshot.edges),
+      warnings: snapshot.warnings
+    }
+
+    :sha256
+    |> :crypto.hash(:erlang.term_to_binary(payload))
+    |> Base.encode16(case: :lower)
+  end
+
+  defp snapshot_digest_nodes(nodes) do
+    nodes
+    |> Map.values()
+    |> Enum.map(fn node ->
+      {node.id, node.path, node.title, node.checksum, node.tags, node.placeholder?}
+    end)
+    |> Enum.sort()
+  end
+
+  defp snapshot_digest_edges(edges) do
+    edges
+    |> Enum.map(fn edge -> {edge.from, edge.to, edge.rel, edge.label, edge.source_span} end)
+    |> Enum.sort()
   end
 
   defp discover(opts) do
