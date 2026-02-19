@@ -1,0 +1,1 @@
+Entry links to [[intro]].
