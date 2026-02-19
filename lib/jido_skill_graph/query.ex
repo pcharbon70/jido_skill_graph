@@ -3,13 +3,15 @@ defmodule JidoSkillGraph.Query do
   Query operations over immutable `JidoSkillGraph.Snapshot` structs.
   """
 
-  alias JidoSkillGraph.{Edge, SkillFile, Snapshot}
+  alias JidoSkillGraph.{Edge, SearchBackend, SkillFile, Snapshot}
+  alias JidoSkillGraph.SearchBackend.Basic, as: BasicSearch
 
   @type query_error ::
           :graph_not_loaded
           | {:unknown_graph, String.t()}
           | {:unknown_node, String.t()}
           | {:invalid_relation_filter, term()}
+          | {:invalid_search_backend, term()}
           | :body_unavailable
           | term()
 
@@ -138,6 +140,14 @@ defmodule JidoSkillGraph.Query do
     end
   end
 
+  @spec search(Snapshot.t() | nil, String.t(), String.t(), keyword()) ::
+          {:ok, [SearchBackend.result()]} | {:error, query_error()}
+  def search(snapshot, graph_id, query, opts \\ []) do
+    with {:ok, snapshot} <- ensure_graph(snapshot, graph_id),
+         {:ok, backend} <- search_backend(opts),
+         do: backend.search(snapshot, graph_id, query, opts)
+  end
+
   defp ensure_graph(nil, _graph_id), do: {:error, :graph_not_loaded}
 
   defp ensure_graph(%Snapshot{graph_id: graph_id} = snapshot, graph_id), do: {:ok, snapshot}
@@ -247,6 +257,17 @@ defmodule JidoSkillGraph.Query do
     case Keyword.get(opts, :direction, :both) do
       dir when dir in [:out, :in, :both] -> {:ok, dir}
       other -> {:error, {:invalid_direction, other}}
+    end
+  end
+
+  defp search_backend(opts) do
+    backend = Keyword.get(opts, :search_backend, BasicSearch)
+
+    if is_atom(backend) and Code.ensure_loaded?(backend) and
+         function_exported?(backend, :search, 4) do
+      {:ok, backend}
+    else
+      {:error, {:invalid_search_backend, backend}}
     end
   end
 

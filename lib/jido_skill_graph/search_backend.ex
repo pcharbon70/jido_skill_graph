@@ -3,6 +3,22 @@ defmodule JidoSkillGraph.SearchBackend do
   Search backend behavior for pluggable query implementations.
   """
 
-  @callback search(snapshot :: term(), graph_id :: term(), query :: term(), opts :: keyword()) ::
-              {:ok, [map()]} | {:error, term()}
+  alias JidoSkillGraph.Snapshot
+
+  @type result :: %{
+          required(:id) => String.t(),
+          required(:score) => non_neg_integer(),
+          optional(:title) => String.t() | nil,
+          optional(:path) => Path.t(),
+          optional(:tags) => [String.t()],
+          optional(:matches) => [atom()],
+          optional(:excerpt) => String.t() | nil
+        }
+
+  @callback search(
+              snapshot :: Snapshot.t(),
+              graph_id :: String.t(),
+              query :: String.t(),
+              opts :: keyword()
+            ) :: {:ok, [result()]} | {:error, term()}
 end
