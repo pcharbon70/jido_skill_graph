@@ -158,6 +158,17 @@ defmodule JidoSkillGraph do
     end)
   end
 
+  @doc """
+  Searches nodes in a graph using the configured search backend.
+  """
+  @spec search(String.t(), String.t(), keyword()) ::
+          {:ok, [JidoSkillGraph.SearchBackend.result()]} | {:error, term()}
+  def search(graph_id, query, opts \\ []) do
+    with_snapshot(opts, fn snapshot ->
+      Query.search(snapshot, graph_id, query, opts)
+    end)
+  end
+
   defp with_snapshot(opts, callback) when is_function(callback, 1) do
     case snapshot_from_opts(opts) do
       nil -> {:error, :graph_not_loaded}
