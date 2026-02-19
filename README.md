@@ -2,13 +2,13 @@
 
 `JidoSkillGraph` is a standalone Elixir library for building and querying markdown-based skill graphs.
 
-## Phase 5 Status
+## Phase 6 Status
 
-This phase establishes the pure-mode graph builder behavior:
+This phase establishes supervised runtime reload and snapshot swap behavior:
 
-- `JidoSkillGraph.Builder` now materializes a directed `Graph.t` topology
-- `JidoSkillGraph.Topology` builds deterministic graph topology from normalized nodes/edges
-- snapshot stats include topology counts and a reproducible snapshot checksum
+- `JidoSkillGraph.Store` publishes snapshots atomically through `:persistent_term`
+- `JidoSkillGraph.Loader` performs versioned reloads and preserves active snapshot on build failure
+- `JidoSkillGraph` supervisor wiring now propagates store/loader/watcher names and reload options
 
 ## Development
 
