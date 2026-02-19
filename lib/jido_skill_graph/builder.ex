@@ -2,29 +2,24 @@ defmodule JidoSkillGraph.Builder do
   @moduledoc """
   Build pipeline entrypoint: discover -> parse -> extract -> resolve -> snapshot.
 
-  Phase 2 returns a placeholder snapshot shape so downstream modules
-  can integrate incrementally.
+  Phase 3 establishes strict model contracts and unresolved-link policy
+  handling for snapshots.
   """
 
-  @type snapshot :: %{
-          mode: :pure,
-          graph: nil,
-          nodes: list(),
-          edges: list(),
-          version: non_neg_integer(),
-          opts: keyword()
-        }
+  alias JidoSkillGraph.Snapshot
+
+  @type snapshot :: Snapshot.t()
 
   @spec build(keyword()) :: {:ok, snapshot()} | {:error, term()}
   def build(opts \\ []) do
-    {:ok,
-     %{
-       mode: :pure,
-       graph: nil,
-       nodes: [],
-       edges: [],
-       version: 0,
-       opts: opts
-     }}
+    Snapshot.new(
+      graph: nil,
+      graph_id: Keyword.get(opts, :graph_id, "default"),
+      version: 0,
+      nodes: [],
+      edges: [],
+      unresolved_link_policy: Keyword.get(opts, :unresolved_link_policy, :warn_and_skip),
+      stats: %{mode: :pure}
+    )
   end
 end
