@@ -8,6 +8,8 @@ defmodule JidoSkillGraph do
 
   use Supervisor
 
+  alias JidoSkillGraph.Query
+
   @type start_option ::
           {:name, GenServer.name()}
           | {:store, keyword()}
@@ -71,6 +73,101 @@ defmodule JidoSkillGraph do
   @spec reload(GenServer.name(), keyword()) :: :ok | {:error, term()}
   def reload(server \\ JidoSkillGraph.Loader, opts \\ []) do
     JidoSkillGraph.Loader.reload(server, opts)
+  end
+
+  @doc """
+  Lists loaded graph identifiers from the current snapshot.
+  """
+  @spec list_graphs(keyword()) :: [String.t()]
+  def list_graphs(opts \\ []) do
+    opts
+    |> snapshot_from_opts()
+    |> Query.list_graphs()
+  end
+
+  @doc """
+  Returns graph topology metadata for the requested graph.
+  """
+  @spec topology(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def topology(graph_id, opts \\ []) do
+    with_snapshot(opts, fn snapshot ->
+      Query.topology(snapshot, graph_id, opts)
+    end)
+  end
+
+  @doc """
+  Lists node metadata for a graph.
+  """
+  @spec list_nodes(String.t(), keyword()) :: {:ok, [map()]} | {:error, term()}
+  def list_nodes(graph_id, opts \\ []) do
+    with_snapshot(opts, fn snapshot ->
+      Query.list_nodes(snapshot, graph_id, opts)
+    end)
+  end
+
+  @doc """
+  Returns metadata for a specific node.
+  """
+  @spec get_node_meta(String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def get_node_meta(graph_id, node_id, opts \\ []) do
+    with_snapshot(opts, fn snapshot ->
+      Query.get_node_meta(snapshot, graph_id, node_id)
+    end)
+  end
+
+  @doc """
+  Reads node body content on demand.
+  """
+  @spec read_node_body(String.t(), String.t(), keyword()) ::
+          {:ok, String.t() | map()} | {:error, term()}
+  def read_node_body(graph_id, node_id, opts \\ []) do
+    with_snapshot(opts, fn snapshot ->
+      Query.read_node_body(snapshot, graph_id, node_id, opts)
+    end)
+  end
+
+  @doc """
+  Lists outbound links for a node.
+  """
+  @spec out_links(String.t(), String.t(), keyword()) ::
+          {:ok, [JidoSkillGraph.Edge.t()]} | {:error, term()}
+  def out_links(graph_id, node_id, opts \\ []) do
+    with_snapshot(opts, fn snapshot ->
+      Query.out_links(snapshot, graph_id, node_id, opts)
+    end)
+  end
+
+  @doc """
+  Lists inbound links for a node.
+  """
+  @spec in_links(String.t(), String.t(), keyword()) ::
+          {:ok, [JidoSkillGraph.Edge.t()]} | {:error, term()}
+  def in_links(graph_id, node_id, opts \\ []) do
+    with_snapshot(opts, fn snapshot ->
+      Query.in_links(snapshot, graph_id, node_id, opts)
+    end)
+  end
+
+  @doc """
+  Returns neighbor node ids reachable from a source node.
+  """
+  @spec neighbors(String.t(), String.t(), keyword()) :: {:ok, [String.t()]} | {:error, term()}
+  def neighbors(graph_id, node_id, opts \\ []) do
+    with_snapshot(opts, fn snapshot ->
+      Query.neighbors(snapshot, graph_id, node_id, opts)
+    end)
+  end
+
+  defp with_snapshot(opts, callback) when is_function(callback, 1) do
+    case snapshot_from_opts(opts) do
+      nil -> {:error, :graph_not_loaded}
+      snapshot -> callback.(snapshot)
+    end
+  end
+
+  defp snapshot_from_opts(opts) do
+    store = Keyword.get(opts, :store, JidoSkillGraph.Store)
+    current_snapshot(store)
   end
 
   defp maybe_add_watcher(children, opts, watcher_opts) do
