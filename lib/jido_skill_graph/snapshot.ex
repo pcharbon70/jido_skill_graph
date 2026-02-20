@@ -16,6 +16,8 @@ defmodule JidoSkillGraph.Snapshot do
     :manifest,
     :version,
     :unresolved_link_policy,
+    :ets_nodes,
+    :ets_edges,
     nodes: %{},
     edges: [],
     warnings: [],
@@ -28,6 +30,8 @@ defmodule JidoSkillGraph.Snapshot do
           manifest: term(),
           version: non_neg_integer(),
           unresolved_link_policy: unresolved_link_policy(),
+          ets_nodes: term() | nil,
+          ets_edges: term() | nil,
           nodes: %{required(String.t()) => Node.t()},
           edges: [Edge.t()],
           warnings: [String.t()],
@@ -40,6 +44,8 @@ defmodule JidoSkillGraph.Snapshot do
           | {:manifest, term()}
           | {:version, non_neg_integer()}
           | {:unresolved_link_policy, unresolved_link_policy()}
+          | {:ets_nodes, term() | nil}
+          | {:ets_edges, term() | nil}
           | {:nodes, [Node.t()] | %{optional(String.t()) => Node.t()}}
           | {:edges, [Edge.t()]}
           | {:warnings, [String.t()]}
@@ -68,6 +74,8 @@ defmodule JidoSkillGraph.Snapshot do
          manifest: Keyword.get(opts, :manifest),
          version: Keyword.get(opts, :version, 0),
          unresolved_link_policy: policy,
+         ets_nodes: Keyword.get(opts, :ets_nodes),
+         ets_edges: Keyword.get(opts, :ets_edges),
          nodes: nodes,
          edges: edges,
          warnings: Keyword.get(opts, :warnings, []) ++ Enum.reverse(warnings),
@@ -207,5 +215,92 @@ defmodule JidoSkillGraph.Snapshot do
     else
       {:error, {:invalid_unresolved_link_policy, policy}}
     end
+  end
+
+  @spec attach_ets(t(), term(), term()) :: t()
+  def attach_ets(%__MODULE__{} = snapshot, ets_nodes, ets_edges) do
+    %{snapshot | ets_nodes: ets_nodes, ets_edges: ets_edges}
+  end
+
+  @spec node_ids(t()) :: [String.t()]
+  def node_ids(%__MODULE__{ets_nodes: ets_nodes} = snapshot) when not is_nil(ets_nodes) do
+    case safe_ets_tab2list(ets_nodes) do
+      [] -> Map.keys(snapshot.nodes)
+      rows -> Enum.map(rows, fn {id, _node} -> id end)
+    end
+  end
+
+  def node_ids(%__MODULE__{nodes: nodes}), do: Map.keys(nodes)
+
+  @spec nodes(t()) :: [Node.t()]
+  def nodes(%__MODULE__{ets_nodes: ets_nodes} = snapshot) when not is_nil(ets_nodes) do
+    case safe_ets_tab2list(ets_nodes) do
+      [] -> Map.values(snapshot.nodes)
+      rows -> Enum.map(rows, fn {_id, node} -> node end)
+    end
+  end
+
+  def nodes(%__MODULE__{nodes: nodes}), do: Map.values(nodes)
+
+  @spec get_node(t(), String.t()) :: Node.t() | nil
+  def get_node(%__MODULE__{ets_nodes: ets_nodes} = snapshot, node_id)
+      when not is_nil(ets_nodes) and is_binary(node_id) do
+    case safe_ets_lookup(ets_nodes, node_id) do
+      [{^node_id, %Node{} = node}] -> node
+      _ -> Map.get(snapshot.nodes, node_id)
+    end
+  end
+
+  def get_node(%__MODULE__{nodes: nodes}, node_id) when is_binary(node_id),
+    do: Map.get(nodes, node_id)
+
+  @spec edges(t()) :: [Edge.t()]
+  def edges(%__MODULE__{ets_edges: ets_edges} = snapshot) when not is_nil(ets_edges) do
+    case safe_ets_lookup(ets_edges, :all) do
+      [] -> snapshot.edges
+      rows -> Enum.map(rows, fn {:all, edge} -> edge end)
+    end
+  end
+
+  def edges(%__MODULE__{edges: edges}), do: edges
+
+  @spec out_edges(t(), String.t()) :: [Edge.t()]
+  def out_edges(%__MODULE__{ets_edges: ets_edges} = snapshot, node_id)
+      when not is_nil(ets_edges) and is_binary(node_id) do
+    case safe_ets_lookup(ets_edges, {:out, node_id}) do
+      [] -> Enum.filter(snapshot.edges, &(&1.from == node_id))
+      rows -> Enum.map(rows, fn {{:out, ^node_id}, edge} -> edge end)
+    end
+  end
+
+  def out_edges(%__MODULE__{edges: edges}, node_id) when is_binary(node_id) do
+    Enum.filter(edges, &(&1.from == node_id))
+  end
+
+  @spec in_edges(t(), String.t()) :: [Edge.t()]
+  def in_edges(%__MODULE__{ets_edges: ets_edges} = snapshot, node_id)
+      when not is_nil(ets_edges) and is_binary(node_id) do
+    case safe_ets_lookup(ets_edges, {:in, node_id}) do
+      [] -> Enum.filter(snapshot.edges, &(&1.to == node_id))
+      rows -> Enum.map(rows, fn {{:in, ^node_id}, edge} -> edge end)
+    end
+  end
+
+  def in_edges(%__MODULE__{edges: edges}, node_id) when is_binary(node_id) do
+    Enum.filter(edges, &(&1.to == node_id))
+  end
+
+  defp safe_ets_lookup(table, key) do
+    :ets.lookup(table, key)
+  catch
+    :error, :badarg -> []
+    :exit, :badarg -> []
+  end
+
+  defp safe_ets_tab2list(table) do
+    :ets.tab2list(table)
+  catch
+    :error, :badarg -> []
+    :exit, :badarg -> []
   end
 end

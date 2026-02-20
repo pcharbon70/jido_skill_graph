@@ -30,8 +30,8 @@ defmodule JidoSkillGraph.Query do
       base = %{
         graph_id: snapshot.graph_id,
         version: snapshot.version,
-        node_count: map_size(snapshot.nodes),
-        edge_count: length(snapshot.edges),
+        node_count: snapshot |> Snapshot.node_ids() |> length(),
+        edge_count: snapshot |> Snapshot.edges() |> length(),
         warning_count: length(snapshot.warnings),
         cyclic?: graph && Graph.is_cyclic?(graph),
         stats: snapshot.stats
@@ -51,8 +51,8 @@ defmodule JidoSkillGraph.Query do
   def list_nodes(snapshot, graph_id, opts \\ []) do
     with {:ok, snapshot} <- ensure_graph(snapshot, graph_id) do
       nodes =
-        snapshot.nodes
-        |> Map.values()
+        snapshot
+        |> Snapshot.nodes()
         |> Enum.map(&node_meta/1)
         |> filter_nodes(opts)
         |> sort_nodes(opts)
@@ -95,8 +95,8 @@ defmodule JidoSkillGraph.Query do
          {:ok, _node} <- ensure_node(snapshot, node_id),
          {:ok, rel_filter} <- relation_filter(opts) do
       links =
-        snapshot.edges
-        |> Enum.filter(&(&1.from == node_id))
+        snapshot
+        |> Snapshot.out_edges(node_id)
         |> filter_edges_by_rel(rel_filter)
 
       {:ok, links}
@@ -110,8 +110,8 @@ defmodule JidoSkillGraph.Query do
          {:ok, _node} <- ensure_node(snapshot, node_id),
          {:ok, rel_filter} <- relation_filter(opts) do
       links =
-        snapshot.edges
-        |> Enum.filter(&(&1.to == node_id))
+        snapshot
+        |> Snapshot.in_edges(node_id)
         |> filter_edges_by_rel(rel_filter)
 
       {:ok, links}
@@ -127,7 +127,7 @@ defmodule JidoSkillGraph.Query do
          {:ok, direction} <- direction_filter(opts) do
       hops = normalize_hops(Keyword.get(opts, :hops, 1))
 
-      edges = filter_edges_by_rel(snapshot.edges, rel_filter)
+      edges = snapshot |> Snapshot.edges() |> filter_edges_by_rel(rel_filter)
 
       neighbor_ids =
         edges
@@ -154,8 +154,8 @@ defmodule JidoSkillGraph.Query do
 
   defp ensure_graph(%Snapshot{}, graph_id), do: {:error, {:unknown_graph, graph_id}}
 
-  defp ensure_node(%Snapshot{nodes: nodes}, node_id) do
-    case Map.get(nodes, node_id) do
+  defp ensure_node(%Snapshot{} = snapshot, node_id) do
+    case Snapshot.get_node(snapshot, node_id) do
       nil -> {:error, {:unknown_node, node_id}}
       node -> {:ok, node}
     end
@@ -178,7 +178,7 @@ defmodule JidoSkillGraph.Query do
 
   defp maybe_include_nodes(payload, opts, snapshot) do
     if Keyword.get(opts, :include_nodes, false) do
-      Map.put(payload, :nodes, snapshot.nodes |> Map.keys() |> Enum.sort())
+      Map.put(payload, :nodes, snapshot |> Snapshot.node_ids() |> Enum.sort())
     else
       payload
     end
@@ -187,7 +187,8 @@ defmodule JidoSkillGraph.Query do
   defp maybe_include_edges(payload, opts, snapshot) do
     if Keyword.get(opts, :include_edges, false) do
       edges =
-        snapshot.edges
+        snapshot
+        |> Snapshot.edges()
         |> Enum.sort_by(&{&1.from, &1.to, &1.rel})
         |> Enum.map(fn edge ->
           %{from: edge.from, to: edge.to, rel: edge.rel, label: edge.label}

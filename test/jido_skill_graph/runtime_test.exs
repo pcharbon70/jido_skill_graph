@@ -26,6 +26,22 @@ defmodule JidoSkillGraph.RuntimeTest do
     assert %{version: 6} = Store.metadata(store_name)
   end
 
+  test "store publishes snapshots with ETS node and edge indexes" do
+    store_name = unique_name(:store)
+    start_supervised!({Store, name: store_name})
+
+    {:ok, snapshot} =
+      Builder.build(root: fixture_path("basic"), graph_id: "runtime", version: 1)
+
+    assert {:ok, committed} = Store.swap_snapshot(store_name, snapshot)
+    assert is_reference(committed.ets_nodes)
+    assert is_reference(committed.ets_edges)
+
+    assert %JidoSkillGraph.Node{id: "alpha"} = Snapshot.get_node(committed, "alpha")
+    assert length(Snapshot.out_edges(committed, "alpha")) == 2
+    assert length(Snapshot.in_edges(committed, "beta")) == 2
+  end
+
   test "loader reload swaps snapshots and bumps runtime version" do
     store_name = unique_name(:store)
     loader_name = unique_name(:loader)
