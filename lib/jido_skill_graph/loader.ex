@@ -8,7 +8,7 @@ defmodule JidoSkillGraph.Loader do
 
   use GenServer
 
-  alias JidoSkillGraph.{Builder, EventPublisher, Store}
+  alias JidoSkillGraph.{Builder, EventPublisher, Store, Telemetry}
   alias JidoSkillGraph.EventPublisher.Noop, as: NoopPublisher
 
   @type status :: %{
@@ -102,6 +102,8 @@ defmodule JidoSkillGraph.Loader do
   end
 
   defp do_reload(opts, state, event_name) do
+    started_at = System.monotonic_time()
+
     build_opts =
       state.builder_opts
       |> Keyword.merge(opts)
@@ -112,6 +114,7 @@ defmodule JidoSkillGraph.Loader do
         case Store.swap_snapshot(state.store, snapshot) do
           {:ok, committed_snapshot} ->
             publish_event(state, event_name, committed_snapshot)
+            emit_reload_telemetry(started_at, :ok, committed_snapshot, state.store)
 
             {:ok,
              %{
@@ -121,10 +124,12 @@ defmodule JidoSkillGraph.Loader do
              }}
 
           {:error, reason} ->
+            emit_reload_failure_telemetry(started_at, {:store_swap_failed, reason}, state.store)
             {:error, {:store_swap_failed, reason}, state}
         end
 
       {:error, reason} ->
+        emit_reload_failure_telemetry(started_at, {:build_failed, reason}, state.store)
         {:error, {:build_failed, reason}, state}
     end
   end
@@ -146,5 +151,37 @@ defmodule JidoSkillGraph.Loader do
       )
 
     :ok
+  end
+
+  defp emit_reload_telemetry(started_at, status, snapshot, store) do
+    metadata = %{
+      status: status,
+      graph_id: snapshot.graph_id,
+      version: snapshot.version,
+      warning_count: length(snapshot.warnings),
+      store: inspect(store)
+    }
+
+    emit_loader_telemetry(started_at, metadata)
+  end
+
+  defp emit_reload_failure_telemetry(started_at, reason, store) do
+    metadata = %{
+      status: :error,
+      reason: inspect(reason),
+      store: inspect(store)
+    }
+
+    emit_loader_telemetry(started_at, metadata)
+  end
+
+  defp emit_loader_telemetry(started_at, metadata) do
+    duration_native = System.monotonic_time() - started_at
+
+    Telemetry.execute(
+      [:loader, :reload],
+      Telemetry.duration_measurements(duration_native),
+      metadata
+    )
   end
 end

@@ -8,7 +8,7 @@ defmodule JidoSkillGraph do
 
   use Supervisor
 
-  alias JidoSkillGraph.{EventPublisher, Query}
+  alias JidoSkillGraph.{EventPublisher, Query, Telemetry}
   alias JidoSkillGraph.EventPublisher.Noop, as: NoopPublisher
 
   @type start_option ::
@@ -125,10 +125,12 @@ defmodule JidoSkillGraph do
     with_snapshot(opts, fn snapshot ->
       case Query.read_node_body(snapshot, graph_id, node_id, opts) do
         {:ok, payload} = result ->
+          emit_node_read_telemetry(snapshot, graph_id, node_id, payload, :ok, opts)
           publish_node_read_event(snapshot, graph_id, node_id, payload, opts)
           result
 
         error ->
+          emit_node_read_telemetry(snapshot, graph_id, node_id, nil, error, opts)
           error
       end
     end)
@@ -223,4 +225,26 @@ defmodule JidoSkillGraph do
 
   defp payload_size(%{body: body}) when is_binary(body), do: byte_size(body)
   defp payload_size(payload) when is_binary(payload), do: byte_size(payload)
+  defp payload_size(_payload), do: 0
+
+  defp emit_node_read_telemetry(snapshot, graph_id, node_id, payload, status, opts) do
+    metadata = %{
+      graph_id: graph_id,
+      node_id: node_id,
+      version: snapshot.version,
+      status: normalize_read_status(status),
+      with_frontmatter: Keyword.get(opts, :with_frontmatter, false),
+      trim: Keyword.get(opts, :trim, false)
+    }
+
+    measurements = %{
+      count: 1,
+      bytes: payload_size(payload)
+    }
+
+    Telemetry.execute([:query, :node_read], measurements, metadata)
+  end
+
+  defp normalize_read_status(:ok), do: :ok
+  defp normalize_read_status({:error, _reason}), do: :error
 end

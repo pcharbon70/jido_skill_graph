@@ -8,7 +8,7 @@ defmodule JidoSkillGraph.Store do
 
   use GenServer
 
-  alias JidoSkillGraph.Snapshot
+  alias JidoSkillGraph.{Snapshot, Telemetry}
 
   @type state :: %{
           name: GenServer.name() | nil,
@@ -96,6 +96,7 @@ defmodule JidoSkillGraph.Store do
   @impl true
   def handle_call({:swap_snapshot, %Snapshot{} = snapshot}, _from, state) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
+    started_at = System.monotonic_time()
 
     next_snapshot =
       if snapshot.version < state.version do
@@ -119,11 +120,13 @@ defmodule JidoSkillGraph.Store do
 
         maybe_delete_replaced_table(state.ets_nodes, ets_nodes)
         maybe_delete_replaced_table(state.ets_edges, ets_edges)
+        emit_swap_telemetry(started_at, :ok, indexed_snapshot)
 
         {:reply, {:ok, indexed_snapshot},
          %{next_state | snapshot: indexed_snapshot, ets_nodes: ets_nodes, ets_edges: ets_edges}}
 
       {:error, reason} ->
+        emit_swap_failure_telemetry(started_at, reason)
         {:reply, {:error, reason}, state}
     end
   end
@@ -216,5 +219,36 @@ defmodule JidoSkillGraph.Store do
   catch
     :error, :badarg -> :ok
     :exit, :badarg -> :ok
+  end
+
+  defp emit_swap_telemetry(started_at, status, snapshot) do
+    metadata = %{
+      status: status,
+      graph_id: snapshot.graph_id,
+      version: snapshot.version,
+      node_count: Snapshot.node_ids(snapshot) |> length(),
+      edge_count: Snapshot.edges(snapshot) |> length()
+    }
+
+    emit_snapshot_swap_telemetry(started_at, metadata)
+  end
+
+  defp emit_swap_failure_telemetry(started_at, reason) do
+    metadata = %{
+      status: :error,
+      reason: inspect(reason)
+    }
+
+    emit_snapshot_swap_telemetry(started_at, metadata)
+  end
+
+  defp emit_snapshot_swap_telemetry(started_at, metadata) do
+    duration_native = System.monotonic_time() - started_at
+
+    Telemetry.execute(
+      [:store, :snapshot_swap],
+      Telemetry.duration_measurements(duration_native),
+      metadata
+    )
   end
 end
