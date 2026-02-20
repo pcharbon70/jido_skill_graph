@@ -6,11 +6,11 @@ tags:
   - structure
   - docs
 links:
-  - target: functions
+  - target: "[[functions]]"
     rel: prereq
-  - target: mix-and-projects
+  - target: "[[mix-and-projects]]"
     rel: related
-  - target: testing
+  - target: "[[testing]]"
     rel: related
 source_lessons:
   - https://elixirschool.com/en/lessons/basics/modules

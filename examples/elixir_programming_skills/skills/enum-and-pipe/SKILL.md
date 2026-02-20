@@ -6,11 +6,11 @@ tags:
   - collections
   - transformations
 links:
-  - target: functions
+  - target: "[[functions]]"
     rel: prereq
-  - target: basics
+  - target: "[[basics]]"
     rel: prereq
-  - target: mix-and-projects
+  - target: "[[mix-and-projects]]"
     rel: related
 source_lessons:
   - https://elixirschool.com/en/lessons/basics/enum

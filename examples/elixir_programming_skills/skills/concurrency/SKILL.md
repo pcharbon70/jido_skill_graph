@@ -6,11 +6,11 @@ tags:
   - concurrency
   - processes
 links:
-  - target: pattern-matching
+  - target: "[[pattern-matching]]"
     rel: prereq
-  - target: error-handling
+  - target: "[[error-handling]]"
     rel: related
-  - target: otp-supervision
+  - target: "[[otp-supervision]]"
     rel: prereq
 source_lessons:
   - https://elixirschool.com/en/lessons/intermediate/concurrency

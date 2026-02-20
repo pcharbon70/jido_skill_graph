@@ -6,11 +6,11 @@ tags:
   - basics
   - syntax
 links:
-  - target: pattern-matching
+  - target: "[[pattern-matching]]"
     rel: prereq
-  - target: control-structures
+  - target: "[[control-structures]]"
     rel: prereq
-  - target: functions
+  - target: "[[functions]]"
     rel: prereq
 source_lessons:
   - https://elixirschool.com/en/lessons/basics/basics

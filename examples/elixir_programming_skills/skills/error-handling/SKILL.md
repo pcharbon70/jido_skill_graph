@@ -6,11 +6,11 @@ tags:
   - reliability
   - control-flow
 links:
-  - target: control-structures
+  - target: "[[control-structures]]"
     rel: prereq
-  - target: concurrency
+  - target: "[[concurrency]]"
     rel: related
-  - target: testing
+  - target: "[[testing]]"
     rel: related
 source_lessons:
   - https://elixirschool.com/en/lessons/intermediate/error_handling
