@@ -8,7 +8,8 @@ defmodule JidoSkillGraph do
 
   use Supervisor
 
-  alias JidoSkillGraph.Query
+  alias JidoSkillGraph.{EventPublisher, Query}
+  alias JidoSkillGraph.EventPublisher.Noop, as: NoopPublisher
 
   @type start_option ::
           {:name, GenServer.name()}
@@ -122,7 +123,14 @@ defmodule JidoSkillGraph do
           {:ok, String.t() | map()} | {:error, term()}
   def read_node_body(graph_id, node_id, opts \\ []) do
     with_snapshot(opts, fn snapshot ->
-      Query.read_node_body(snapshot, graph_id, node_id, opts)
+      case Query.read_node_body(snapshot, graph_id, node_id, opts) do
+        {:ok, payload} = result ->
+          publish_node_read_event(snapshot, graph_id, node_id, payload, opts)
+          result
+
+        error ->
+          error
+      end
     end)
   end
 
@@ -188,4 +196,31 @@ defmodule JidoSkillGraph do
       children
     end
   end
+
+  defp publish_node_read_event(snapshot, graph_id, node_id, payload, opts) do
+    event_publisher = Keyword.get(opts, :event_publisher, NoopPublisher)
+    event_publisher_opts = Keyword.get(opts, :event_publisher_opts, [])
+
+    metadata = %{
+      graph_id: graph_id,
+      node_id: node_id,
+      version: snapshot.version,
+      with_frontmatter: Keyword.get(opts, :with_frontmatter, false),
+      trim: Keyword.get(opts, :trim, false),
+      bytes: payload_size(payload)
+    }
+
+    _ =
+      EventPublisher.publish(
+        event_publisher,
+        "skills_graph.node_read",
+        metadata,
+        event_publisher_opts
+      )
+
+    :ok
+  end
+
+  defp payload_size(%{body: body}) when is_binary(body), do: byte_size(body)
+  defp payload_size(payload) when is_binary(payload), do: byte_size(payload)
 end

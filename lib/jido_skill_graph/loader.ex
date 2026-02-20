@@ -8,14 +8,16 @@ defmodule JidoSkillGraph.Loader do
 
   use GenServer
 
-  alias JidoSkillGraph.{Builder, Store}
+  alias JidoSkillGraph.{Builder, EventPublisher, Store}
+  alias JidoSkillGraph.EventPublisher.Noop, as: NoopPublisher
 
   @type status :: %{
           version: non_neg_integer(),
           last_loaded_at: DateTime.t() | nil,
           last_error: term() | nil,
           builder_opts: keyword(),
-          store: GenServer.name()
+          store: GenServer.name(),
+          event_publisher: module()
         }
 
   @type state :: %{
@@ -23,7 +25,9 @@ defmodule JidoSkillGraph.Loader do
           builder_opts: keyword(),
           version: non_neg_integer(),
           last_loaded_at: DateTime.t() | nil,
-          last_error: term() | nil
+          last_error: term() | nil,
+          event_publisher: module(),
+          event_publisher_opts: keyword()
         }
 
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -49,7 +53,9 @@ defmodule JidoSkillGraph.Loader do
       builder_opts: Keyword.get(opts, :builder_opts, []),
       version: 0,
       last_loaded_at: nil,
-      last_error: nil
+      last_error: nil,
+      event_publisher: Keyword.get(opts, :event_publisher, NoopPublisher),
+      event_publisher_opts: Keyword.get(opts, :event_publisher_opts, [])
     }
 
     if Keyword.get(opts, :load_on_start, true) do
@@ -61,7 +67,7 @@ defmodule JidoSkillGraph.Loader do
 
   @impl true
   def handle_info(:initial_load, state) do
-    case do_reload([], state) do
+    case do_reload([], state, "skills_graph.loaded") do
       {:ok, next_state} ->
         {:noreply, next_state}
 
@@ -77,7 +83,8 @@ defmodule JidoSkillGraph.Loader do
       last_loaded_at: state.last_loaded_at,
       last_error: state.last_error,
       builder_opts: state.builder_opts,
-      store: state.store
+      store: state.store,
+      event_publisher: state.event_publisher
     }
 
     {:reply, status, state}
@@ -85,7 +92,7 @@ defmodule JidoSkillGraph.Loader do
 
   @impl true
   def handle_call({:reload, opts}, _from, state) do
-    case do_reload(opts, state) do
+    case do_reload(opts, state, "skills_graph.reloaded") do
       {:ok, next_state} ->
         {:reply, :ok, %{next_state | last_error: nil}}
 
@@ -94,7 +101,7 @@ defmodule JidoSkillGraph.Loader do
     end
   end
 
-  defp do_reload(opts, state) do
+  defp do_reload(opts, state, event_name) do
     build_opts =
       state.builder_opts
       |> Keyword.merge(opts)
@@ -104,6 +111,8 @@ defmodule JidoSkillGraph.Loader do
       {:ok, snapshot} ->
         case Store.swap_snapshot(state.store, snapshot) do
           {:ok, committed_snapshot} ->
+            publish_event(state, event_name, committed_snapshot)
+
             {:ok,
              %{
                state
@@ -118,5 +127,24 @@ defmodule JidoSkillGraph.Loader do
       {:error, reason} ->
         {:error, {:build_failed, reason}, state}
     end
+  end
+
+  defp publish_event(state, event_name, snapshot) do
+    payload = %{
+      graph_id: snapshot.graph_id,
+      version: snapshot.version,
+      warnings: length(snapshot.warnings),
+      stats: snapshot.stats
+    }
+
+    _ =
+      EventPublisher.publish(
+        state.event_publisher,
+        event_name,
+        payload,
+        state.event_publisher_opts
+      )
+
+    :ok
   end
 end
