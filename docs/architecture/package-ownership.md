@@ -11,22 +11,6 @@ This document is the source of truth for ownership boundaries across the skill g
 - Snapshot state model and reload mechanics
 - Search backend behavior and baseline implementation
 
-## MCP Wrapper: `jido_skill_graph_mcp`
-
-- MCP server setup and lifecycle
-- Tool definitions and handlers
-  - `skills_graph.list`
-  - `skills_graph.topology`
-  - `skills_graph.node_links`
-  - `skills_graph.search`
-- Resource routing
-  - `skill://<graph_id>/<node_id>`
-- Current implementation lives under the standalone-ready namespace:
-  - `JidoSkillGraphMCP`
-  - `JidoSkillGraphMCP.Tools`
-  - `JidoSkillGraphMCP.Resources`
-- Backward-compatible delegates remain under `JidoSkillGraph.MCP*` during migration.
-
 ## Jido Adapter
 
 - `child_spec/1` composition into Jido supervision trees
@@ -41,7 +25,6 @@ This document is the source of truth for ownership boundaries across the skill g
 
 ## Explicit Ownership Rules
 
-- Core package must not depend on Jido, JidoAI, or MCP libraries.
-- MCP package may depend on core package, never the reverse.
+- Core package must not depend on Jido or JidoAI libraries.
 - Adapters may depend on core package; core cannot depend on adapters.
-- If a module needs both graph internals and transport/runtime internals, split it.
+- If a module needs both graph internals and runtime internals, split it.

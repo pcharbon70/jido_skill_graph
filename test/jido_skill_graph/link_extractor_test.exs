@@ -30,8 +30,8 @@ defmodule JidoSkillGraph.LinkExtractorTest do
     assert Enum.any?(links, &(&1.target == "foundation" and &1.rel == :prereq))
   end
 
-  test "normalize_target/1 canonicalizes skill uri and markdown extension" do
-    assert LinkExtractor.normalize_target("skill://knowledge-work/Graph-Structure/SKILL.md") ==
-             "graph-structure"
+  test "normalize_target/1 canonicalizes path-like targets and markdown extension" do
+    assert LinkExtractor.normalize_target("Knowledge-Work/Graph-Structure/SKILL.md") ==
+             "knowledge-work/graph-structure"
   end
 end

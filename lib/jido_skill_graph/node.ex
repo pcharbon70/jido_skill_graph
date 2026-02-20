@@ -68,7 +68,7 @@ defmodule JidoSkillGraph.Node do
     %__MODULE__{
       id: id,
       graph_id: graph_id,
-      path: "skill://#{graph_id}/#{id}",
+      path: "/virtual/#{graph_id}/#{id}",
       title: id,
       checksum: nil,
       body_ref: nil,
