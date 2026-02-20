@@ -194,21 +194,11 @@ defmodule JidoSkillGraph.LinkExtractor do
   def normalize_target(raw_target) when is_binary(raw_target) do
     raw_target
     |> String.trim()
-    |> strip_skill_uri_prefix()
     |> strip_fragment()
     |> strip_file_extension()
     |> strip_skill_filename()
     |> Node.normalize_id()
   end
-
-  defp strip_skill_uri_prefix("skill://" <> rest) do
-    case URI.parse("skill://" <> rest) do
-      %URI{path: path} when is_binary(path) and path != "" -> String.trim_leading(path, "/")
-      _ -> rest
-    end
-  end
-
-  defp strip_skill_uri_prefix(target), do: target
 
   defp strip_fragment(target) do
     target
