@@ -19,11 +19,8 @@ source_lessons:
   - https://elixirschool.com/en/lessons/basics/iex_helpers
 content_origin: Summarized from Elixir School lessons in paraphrased form. Not verbatim text.
 ---
-Elixir programs are built from immutable values. Numbers, strings, atoms, tuples, maps, and lists are the core data structures you use in almost every file.
-When a value appears to "change," Elixir actually returns a new value and leaves the old one untouched.
+Summary of the source lessons: begin with immutable values, then practice manipulating collections and strings in IEx until core operations feel automatic.
+The lessons stress that maps, tuples, lists, binaries, and atoms each have different tradeoffs and should be chosen intentionally.
+IEx helpers are positioned as a daily workflow tool for fast feedback and API discovery.
 
-Use IEx as your lab. Evaluate expressions, inspect values, and experiment with helper commands to understand function behavior quickly.
-Collections are central: lists are great for sequential data, maps for key lookup, and tuples for fixed-size grouped values.
-
-Mastering these basics makes later topics easier because every advanced feature still manipulates the same immutable building blocks.
-From here, continue into [[pattern-matching]] and [[functions]].
+After these foundations, branch into [[pattern-matching]] for structural data extraction, [[control-structures]] for expression-driven flow, and [[functions]] for composition.

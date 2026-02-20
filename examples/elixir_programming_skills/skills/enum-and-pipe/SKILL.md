@@ -18,13 +18,8 @@ source_lessons:
   - https://elixirschool.com/en/lessons/basics/comprehensions
 content_origin: Summarized from Elixir School lessons in paraphrased form. Not verbatim text.
 ---
-`Enum` provides a rich toolkit for transforming lists and other enumerable data.
-Map, filter, reduce, and chunk operations let you express intent clearly without manual loops.
+Summary of the source lessons: favor declarative collection processing with `Enum` and represent transformations as readable pipelines.
+Use comprehensions for dense iteration/filter/projection cases, and reserve long pipelines for steps that remain semantically clear.
 
-The pipe operator (`|>`) turns nested calls into readable data flow.
-Use it to show transformation steps from left to right, but keep each step meaningful.
-If a pipeline becomes too long or opaque, extract helper functions.
-
-Comprehensions are useful when building collections from one or more sources with concise filtering and projection.
-
-These patterns are central to everyday Elixir and pair naturally with clean function design from [[functions]].
+These patterns depend on stable data assumptions from [[basics]] and function boundaries from [[functions]].
+In real applications, they are combined and automated through [[mix-and-projects]] workflows.

@@ -18,13 +18,7 @@ source_lessons:
   - https://elixirschool.com/en/lessons/testing/stream_data
 content_origin: Summarized from Elixir School lessons in paraphrased form. Not verbatim text.
 ---
-ExUnit provides a fast, expressive testing framework that integrates directly with Mix.
-Write tests close to behavior, not implementation details.
+Summary of the source lessons: use ExUnit for core assertions, then introduce behavior-focused mocking and property-based testing where input space is large.
+The lessons stress test clarity, deterministic setup, and verifying contracts rather than implementation trivia.
 
-A strong test suite covers pure functions, boundary conditions, and failure cases.
-For side effects and external dependencies, use clear seams and mocking/stubbing only where needed.
-
-Property-based testing is useful when invariants matter more than hand-picked examples.
-As code grows, test organization and naming become as important as assertions.
-
-Reliable tests support safe refactoring and make concurrency/error-handling changes less risky.
+Operationalize these checks through [[mix-and-projects]], include negative-path coverage from [[error-handling]], and keep test intent aligned with public API structure in [[modules-and-docs]].

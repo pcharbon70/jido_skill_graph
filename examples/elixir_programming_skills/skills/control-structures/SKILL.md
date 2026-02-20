@@ -16,13 +16,8 @@ source_lessons:
   - https://elixirschool.com/en/lessons/basics/control_structures
 content_origin: Summarized from Elixir School lessons in paraphrased form. Not verbatim text.
 ---
-Elixir control structures emphasize expression-oriented flow.
-`if` and `unless` are useful for simple booleans, while `case` and `cond` handle richer branching.
+Summary of the lesson: prefer expression-oriented branching and explicit outcomes.
+`if`/`unless` are simple boolean tools, while `case`, `cond`, and `with` are better for multi-branch and multi-step flows where data shape matters.
+Guards narrow valid clauses and keep decision logic local to the pattern.
 
-`case` is often the most idiomatic because it combines branching with pattern matching.
-`with` is useful when you need a readable sequence of dependent matches and want to short-circuit on failure.
-
-Prefer small functions with clear return values over large imperative blocks.
-This keeps control flow testable and easier to reason about.
-
-As programs grow, control structures blend with [[error-handling]] patterns such as tagged tuples and explicit success/error branches.
+Use [[pattern-matching]] to power these branches, shape logic into reusable [[functions]], and map success/error paths into [[error-handling]] conventions.
