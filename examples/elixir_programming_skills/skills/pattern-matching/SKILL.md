@@ -6,11 +6,11 @@ tags:
   - basics
   - data-shaping
 links:
-  - target: basics
+  - target: "[[basics]]"
     rel: prereq
-  - target: control-structures
+  - target: "[[control-structures]]"
     rel: related
-  - target: functions
+  - target: "[[functions]]"
     rel: related
 source_lessons:
   - https://elixirschool.com/en/lessons/basics/pattern_matching

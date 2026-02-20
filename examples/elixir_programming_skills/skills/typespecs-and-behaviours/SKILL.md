@@ -6,11 +6,11 @@ tags:
   - contracts
   - architecture
 links:
-  - target: modules-and-docs
+  - target: "[[modules-and-docs]]"
     rel: prereq
-  - target: otp-supervision
+  - target: "[[otp-supervision]]"
     rel: related
-  - target: testing
+  - target: "[[testing]]"
     rel: related
 source_lessons:
   - https://elixirschool.com/en/lessons/advanced/typespec

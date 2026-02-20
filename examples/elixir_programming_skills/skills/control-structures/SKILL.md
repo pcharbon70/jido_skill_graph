@@ -6,11 +6,11 @@ tags:
   - basics
   - flow
 links:
-  - target: pattern-matching
+  - target: "[[pattern-matching]]"
     rel: prereq
-  - target: functions
+  - target: "[[functions]]"
     rel: related
-  - target: error-handling
+  - target: "[[error-handling]]"
     rel: related
 source_lessons:
   - https://elixirschool.com/en/lessons/basics/control_structures

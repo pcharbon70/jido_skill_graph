@@ -6,11 +6,11 @@ tags:
   - basics
   - functions
 links:
-  - target: basics
+  - target: "[[basics]]"
     rel: prereq
-  - target: modules-and-docs
+  - target: "[[modules-and-docs]]"
     rel: related
-  - target: enum-and-pipe
+  - target: "[[enum-and-pipe]]"
     rel: related
 source_lessons:
   - https://elixirschool.com/en/lessons/basics/functions

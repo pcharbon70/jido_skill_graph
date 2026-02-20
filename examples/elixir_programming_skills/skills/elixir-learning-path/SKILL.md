@@ -6,29 +6,29 @@ tags:
   - path
   - overview
 links:
-  - target: basics
+  - target: "[[basics]]"
     rel: related
-  - target: pattern-matching
+  - target: "[[pattern-matching]]"
     rel: related
-  - target: control-structures
+  - target: "[[control-structures]]"
     rel: related
-  - target: functions
+  - target: "[[functions]]"
     rel: related
-  - target: modules-and-docs
+  - target: "[[modules-and-docs]]"
     rel: related
-  - target: enum-and-pipe
+  - target: "[[enum-and-pipe]]"
     rel: related
-  - target: mix-and-projects
+  - target: "[[mix-and-projects]]"
     rel: related
-  - target: error-handling
+  - target: "[[error-handling]]"
     rel: related
-  - target: concurrency
+  - target: "[[concurrency]]"
     rel: related
-  - target: otp-supervision
+  - target: "[[otp-supervision]]"
     rel: related
-  - target: testing
+  - target: "[[testing]]"
     rel: related
-  - target: typespecs-and-behaviours
+  - target: "[[typespecs-and-behaviours]]"
     rel: related
 source_lessons:
   - https://elixirschool.com/en/lessons/basics

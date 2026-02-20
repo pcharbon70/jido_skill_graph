@@ -6,11 +6,11 @@ tags:
   - tooling
   - build
 links:
-  - target: modules-and-docs
+  - target: "[[modules-and-docs]]"
     rel: prereq
-  - target: testing
+  - target: "[[testing]]"
     rel: prereq
-  - target: typespecs-and-behaviours
+  - target: "[[typespecs-and-behaviours]]"
     rel: related
 source_lessons:
   - https://elixirschool.com/en/lessons/basics/mix

@@ -6,11 +6,11 @@ tags:
   - otp
   - supervision
 links:
-  - target: concurrency
+  - target: "[[concurrency]]"
     rel: prereq
-  - target: error-handling
+  - target: "[[error-handling]]"
     rel: related
-  - target: typespecs-and-behaviours
+  - target: "[[typespecs-and-behaviours]]"
     rel: related
 source_lessons:
   - https://elixirschool.com/en/lessons/advanced/otp_supervisors

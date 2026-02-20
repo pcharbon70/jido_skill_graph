@@ -6,11 +6,11 @@ tags:
   - testing
   - quality
 links:
-  - target: mix-and-projects
+  - target: "[[mix-and-projects]]"
     rel: prereq
-  - target: error-handling
+  - target: "[[error-handling]]"
     rel: related
-  - target: modules-and-docs
+  - target: "[[modules-and-docs]]"
     rel: related
 source_lessons:
   - https://elixirschool.com/en/lessons/testing/basics
