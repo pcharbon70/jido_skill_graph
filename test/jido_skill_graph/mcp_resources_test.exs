@@ -2,11 +2,16 @@ defmodule JidoSkillGraph.MCPResourcesTest do
   use ExUnit.Case, async: true
 
   alias JidoSkillGraph.{Loader, Store}
-  alias JidoSkillGraph.MCP.Resources
+  alias JidoSkillGraph.MCP
+  alias JidoSkillGraph.MCP.Resources, as: CompatResources
+  alias JidoSkillGraphMCP.Resources
 
   test "templates define skill URI resource" do
     templates = Resources.templates()
     assert [%{"uriTemplate" => "skill://{graph_id}/{node_id}"}] = templates
+
+    assert CompatResources.templates() == templates
+    assert MCP.resource_templates() == templates
   end
 
   test "parse_uri supports nested node ids" do
@@ -23,6 +28,15 @@ defmodule JidoSkillGraph.MCPResourcesTest do
     assert {:ok, payload} = Resources.read("skill://basic/alpha", store: store_name)
     assert payload["mimeType"] == "text/markdown"
     assert String.contains?(payload["text"], "Alpha references")
+
+    assert {:ok, compat_payload} =
+             CompatResources.read("skill://basic/alpha", store: store_name)
+
+    assert {:ok, facade_payload} =
+             MCP.read_resource("skill://basic/alpha", store: store_name)
+
+    assert compat_payload == payload
+    assert facade_payload == payload
   end
 
   test "read returns MCP-friendly errors for unknown resource" do

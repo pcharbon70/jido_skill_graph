@@ -21,6 +21,11 @@ This document is the source of truth for ownership boundaries across the skill g
   - `skills_graph.search`
 - Resource routing
   - `skill://<graph_id>/<node_id>`
+- Current implementation lives under the standalone-ready namespace:
+  - `JidoSkillGraphMCP`
+  - `JidoSkillGraphMCP.Tools`
+  - `JidoSkillGraphMCP.Resources`
+- Backward-compatible delegates remain under `JidoSkillGraph.MCP*` during migration.
 
 ## Jido Adapter
 
