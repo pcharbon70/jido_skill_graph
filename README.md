@@ -2,14 +2,14 @@
 
 `JidoSkillGraph` is a standalone Elixir library for building and querying markdown-based skill graphs.
 
-## Phase 11 Status
+## Phase 12 Status
 
-This phase moves snapshot reads onto ETS-backed indexes while preserving the existing public API:
+This phase adds explicit core telemetry contracts and documentation for runtime observability:
 
-- `JidoSkillGraph.Store` builds and publishes snapshot-local ETS indexes during atomic swaps
-- `JidoSkillGraph.Snapshot` now carries `ets_nodes` and `ets_edges` handles with helper accessors
-- `JidoSkillGraph.Query` resolves nodes/edges through snapshot helpers so read paths use ETS when available
-- tests cover ETS index materialization and accessor behavior
+- `JidoSkillGraph.Loader` emits `[:jido_skill_graph, :loader, :reload]` with duration and status metadata
+- `JidoSkillGraph.Store` emits `[:jido_skill_graph, :store, :snapshot_swap]` for successful and failed swaps
+- `JidoSkillGraph.read_node_body/3` emits `[:jido_skill_graph, :query, :node_read]` for both success and failure
+- telemetry contracts and measurements are documented in `docs/architecture/telemetry-events.md`
 
 ## Development
 
