@@ -2,13 +2,17 @@
 
 `JidoSkillGraph` is a standalone Elixir library for building and querying markdown-based skill graphs.
 
-## Phase 8 Status
+## Phase 9 Status
 
-This phase establishes pluggable search backend behavior:
+This phase establishes MCP-facing tool and resource modules:
 
-- `JidoSkillGraph.search/3` is available via facade and query layers
-- `JidoSkillGraph.SearchBackend` defines the extension contract
-- `JidoSkillGraph.SearchBackend.Basic` provides weighted substring search over id/title/tags/body
+- `JidoSkillGraph.MCP.Tools` exposes:
+  - `skills_graph.list`
+  - `skills_graph.topology`
+  - `skills_graph.node_links`
+  - `skills_graph.search`
+- `JidoSkillGraph.MCP.Resources` supports `skill://<graph_id>/<node_id>` resource reads
+- `JidoSkillGraph.MCP` provides a simple facade for tools/resources
 
 ## Development
 
