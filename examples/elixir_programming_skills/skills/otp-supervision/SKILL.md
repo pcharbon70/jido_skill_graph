@@ -17,13 +17,7 @@ source_lessons:
   - https://elixirschool.com/en/lessons/advanced/behaviours
 content_origin: Summarized from Elixir School lessons in paraphrased form. Not verbatim text.
 ---
-OTP supervision is Elixir's primary mechanism for fault-tolerant systems.
-Supervisors monitor child processes and apply restart strategies when failures occur.
+Summary of the source lessons: supervision trees define fault boundaries and restart semantics so systems recover predictably.
+The lessons cover supervisor strategies, child specs, DynamicSupervisor, and task supervision patterns for ephemeral work.
 
-Instead of trying to prevent every crash, design components that can restart from known state.
-This "let it crash" mindset works when process boundaries are clear and supervision trees reflect system domains.
-
-Choose restart strategies intentionally (`:one_for_one`, `:rest_for_one`, `:one_for_all`) based on dependency direction.
-Keep child initialization small and deterministic to reduce restart complexity.
-
-Supervision works best when each worker has a clear contract, which can be formalized with [[typespecs-and-behaviours]].
+Build this on top of process design from [[concurrency]], align restart behavior with policy decisions in [[error-handling]], and make component interfaces explicit using [[typespecs-and-behaviours]].

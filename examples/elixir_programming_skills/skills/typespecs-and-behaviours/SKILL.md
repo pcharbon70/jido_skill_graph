@@ -17,14 +17,7 @@ source_lessons:
   - https://elixirschool.com/en/lessons/advanced/behaviours
 content_origin: Summarized from Elixir School lessons in paraphrased form. Not verbatim text.
 ---
-Typespecs communicate intended input/output contracts to humans and static analysis tools.
-Even when runtime types are dynamic, clear specs reduce ambiguity in API usage.
+Summary of the source lessons: typespecs document expectations and improve analysis tooling, while behaviours formalize callback contracts for interchangeable modules.
+Together they support safer extension points and clearer API communication across teams.
 
-Behaviours define callback contracts for pluggable modules.
-They make architecture more modular by separating interface from implementation.
-This is useful for adapters, test doubles, and framework boundaries.
-
-When combined, typespecs and behaviours improve maintainability by making assumptions explicit.
-They also help teams reason about module responsibilities as systems grow.
-
-Use these techniques to keep OTP and application code consistent, testable, and easier to evolve.
+Document these contracts where modules are defined in [[modules-and-docs]], apply them to long-lived service boundaries in [[otp-supervision]], and verify contract adherence in [[testing]].

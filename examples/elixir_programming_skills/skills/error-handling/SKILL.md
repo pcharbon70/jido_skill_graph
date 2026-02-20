@@ -16,13 +16,7 @@ source_lessons:
   - https://elixirschool.com/en/lessons/intermediate/error_handling
 content_origin: Summarized from Elixir School lessons in paraphrased form. Not verbatim text.
 ---
-Elixir encourages explicit error handling with tagged tuples like `{:ok, value}` and `{:error, reason}`.
-This pattern keeps failure visible in function contracts and reduces hidden control flow.
+Summary of the lesson: keep normal error paths explicit with tagged tuples, and reserve exceptions for exceptional cases.
+The material walks through `try/rescue/after`, custom exceptions, throw/catch, and exit behavior, with emphasis on choosing the right mechanism.
 
-Exceptions exist, but they are best reserved for truly exceptional conditions.
-For expected failures, return structured results and let callers decide how to recover.
-
-`with` expressions and `case` make multi-step error paths readable.
-In concurrent systems, process failure can be isolated and recovered through supervision instead of defensive code everywhere.
-
-Pair these practices with [[testing]] so both success and failure paths are exercised.
+Model decision flow with [[control-structures]], integrate process-level failure behavior with [[concurrency]], and cover both success and failure paths in [[testing]].

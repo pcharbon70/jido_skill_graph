@@ -16,14 +16,8 @@ source_lessons:
   - https://elixirschool.com/en/lessons/basics/pattern_matching
 content_origin: Summarized from Elixir School lessons in paraphrased form. Not verbatim text.
 ---
-Pattern matching is one of Elixir's defining features.
-You can destructure tuples, lists, and maps to bind only the pieces you care about.
+Summary of the lesson: matching is not assignment in the imperative sense; it is a structural check that either succeeds and binds values or fails loudly.
+The material highlights destructuring across tuples, lists, and maps, plus guardrails such as the pin operator when preserving an existing binding.
 
-A match succeeds when the value fits the pattern. If the shape is wrong, the match fails, which helps surface invalid assumptions early.
-Use this behavior to make code explicit about expected input.
-
-In function heads, pattern matching becomes a routing mechanism:
-different clauses handle different shapes cleanly.
-Combined with guards, this gives a concise way to express business rules without deeply nested conditionals.
-
-Pattern matching works hand-in-hand with [[control-structures]] and [[functions]], and it appears constantly in [[concurrency]] message handling.
+Pattern matching is used directly in [[control-structures]] (`case`/`with`) and function clause selection in [[functions]].
+Before this topic, solidify collection fundamentals in [[basics]].

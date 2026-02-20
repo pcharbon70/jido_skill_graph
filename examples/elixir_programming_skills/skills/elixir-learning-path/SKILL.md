@@ -36,11 +36,11 @@ source_lessons:
   - https://elixirschool.com/en/lessons/advanced
 content_origin: Summarized from Elixir School lessons in paraphrased form. Not verbatim text.
 ---
-Use this node as the entry point for learning Elixir as a connected set of concepts.
+Summary of the lesson index pages: Elixir learning is typically staged from core syntax and data handling into runtime concerns and architecture patterns.
+The basics track emphasizes data types, pattern matching, control flow, functions, modules, tooling, and documentation habits.
+Intermediate topics shift toward process-oriented thinking and operational tasks, while advanced topics center on OTP structure and contracts.
 
-Start with [[basics]] to understand values, immutability, and interactive work in IEx.
-Move to [[pattern-matching]] and [[control-structures]] so you can shape data and branch logic safely.
-Then focus on [[functions]], [[modules-and-docs]], and [[enum-and-pipe]] to write composable, readable programs.
-
-Once core syntax feels natural, add project workflow with [[mix-and-projects]], defensive coding in [[error-handling]], and concurrent design in [[concurrency]].
-Finish by learning process lifecycle in [[otp-supervision]], quality practices in [[testing]], and interface contracts in [[typespecs-and-behaviours]].
+Recommended progression through this graph is:
+[[basics]] -> [[pattern-matching]] -> [[control-structures]] -> [[functions]] -> [[modules-and-docs]] -> [[enum-and-pipe]].
+Then expand into project operation and resilience with [[mix-and-projects]], [[error-handling]], and [[concurrency]].
+Finish with system design and quality practices in [[otp-supervision]], [[testing]], and [[typespecs-and-behaviours]].
