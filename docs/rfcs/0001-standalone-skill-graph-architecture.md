@@ -8,7 +8,7 @@
 
 ## 1. Context
 
-The current direction requires a reusable skill graph capability that is not coupled to any single agent runtime. The architecture research proposes that graph loading, parsing, topology, and query APIs live in an independent Elixir package, while Jido and JidoAI consume it via adapters.
+The current direction requires a reusable skill graph capability that is not coupled to any single agent runtime. The architecture research proposes that graph loading, parsing, topology, and query APIs live in an independent Elixir package, while runtimes consume it via adapters.
 
 This RFC locks boundaries before implementation so later phases can ship incrementally with clear ownership and stable integration points.
 
@@ -24,7 +24,7 @@ If these are not split early, the system becomes hard to evolve, test, and publi
 ## 3. Goals
 
 - Build `jido_skill_graph` as a standalone library (Hex + Git repo compatible).
-- Keep Jido and JidoAI as consumers through adapters.
+- Keep runtime integrations as consumers through adapters.
 - Support both supervised and pure-library usage patterns.
 - Preserve compatibility with common skill markdown conventions.
 
@@ -32,7 +32,7 @@ If these are not split early, the system becomes hard to evolve, test, and publi
 
 - This phase does not implement runtime behavior.
 - This phase does not define LLM prompting or tool selection policy.
-- This phase does not migrate existing JidoAI behavior yet.
+- This phase does not define application-level orchestration policy.
 
 ## 5. Decision Summary
 
@@ -42,8 +42,6 @@ We adopt the following architecture:
   - Owns discovery, parse pipeline, graph build, snapshot storage, query API.
 - Jido adapter layer
   - Owns supervision integration and Jido signal emission.
-- JidoAI adapter layer
-  - Owns skill selection/orchestration and consumption of graph APIs.
 
 ## 6. Package Boundaries
 
@@ -66,11 +64,11 @@ We adopt the following architecture:
 - Agent runtime assumptions specific to Jido internals.
 - Assistant UI/registry semantics beyond interoperable markdown parsing.
 
-### 6.3 Jido/JidoAI adapters own
+### 6.3 Runtime adapters own
 
 - Runtime wiring into supervisors.
 - Signal publishing and telemetry forwarding.
-- Selection logic for which skills to request and when.
+- Application-level selection logic for when and how graph APIs are called.
 
 ## 7. Operating Modes
 
@@ -99,7 +97,7 @@ The parser contract must support:
 
 ## 10. Alternatives Considered
 
-- Keep graph inside JidoAI namespace:
+- Keep graph inside a runtime namespace:
   - Rejected because it blocks reuse and couples to one runtime.
 
 ## 11. Rollout Strategy
