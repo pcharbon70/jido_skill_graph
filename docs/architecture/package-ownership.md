@@ -17,16 +17,9 @@ This document is the source of truth for ownership boundaries across the skill g
 - Jido signal emission for load/reload/read events
 - Runtime-specific configuration translation
 
-## JidoAI Adapter
-
-- Skill selection and orchestration logic
-- Querying graph service as backend for skills retrieval
-- Backward-compatible migration path from legacy loaders
-- Optional helper module in this repo:
-  - `JidoSkillGraph.JidoAIAdapter`
-
 ## Explicit Ownership Rules
 
-- Core package must not depend on Jido or JidoAI libraries.
+- Core package must not depend on runtime libraries.
 - Adapters may depend on core package; core cannot depend on adapters.
+- Orchestration and skill-selection policy belongs outside this package.
 - If a module needs both graph internals and runtime internals, split it.
