@@ -2,16 +2,13 @@
 
 `JidoSkillGraph` is a standalone Elixir library for building and querying markdown-based skill graphs.
 
-## Current Status
+## Phase 15 Status
 
-MCP functionality has been removed from this repository.
+This phase adds JidoAI-consumer integration helpers and migration guidance:
 
-`jido_skill_graph` now focuses on:
-
-- markdown skill discovery/parsing
-- graph snapshot build/reload/runtime
-- query/search APIs
-- optional Jido runtime integration hooks
+- `JidoSkillGraph.JidoAIAdapter` exposes orchestration-facing wrappers over public graph APIs
+- tests cover candidate listing, lazy reads, related-skill traversal, and search delegation
+- migration notes now document replacing direct legacy loaders with `jido_skill_graph`
 
 ## Development
 

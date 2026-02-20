@@ -22,6 +22,8 @@ This document is the source of truth for ownership boundaries across the skill g
 - Skill selection and orchestration logic
 - Querying graph service as backend for skills retrieval
 - Backward-compatible migration path from legacy loaders
+- Optional helper module in this repo:
+  - `JidoSkillGraph.JidoAIAdapter`
 
 ## Explicit Ownership Rules
 
