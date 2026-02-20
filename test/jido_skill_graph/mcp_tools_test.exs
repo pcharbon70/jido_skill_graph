@@ -2,7 +2,9 @@ defmodule JidoSkillGraph.MCPToolsTest do
   use ExUnit.Case, async: true
 
   alias JidoSkillGraph.{Loader, Store}
-  alias JidoSkillGraph.MCP.Tools
+  alias JidoSkillGraph.MCP
+  alias JidoSkillGraph.MCP.Tools, as: CompatTools
+  alias JidoSkillGraphMCP.Tools
 
   test "definitions expose expected MCP tools" do
     names = Tools.definitions() |> Enum.map(& &1["name"]) |> Enum.sort()
@@ -13,6 +15,9 @@ defmodule JidoSkillGraph.MCPToolsTest do
              "skills_graph.search",
              "skills_graph.topology"
            ]
+
+    assert CompatTools.definitions() == Tools.definitions()
+    assert MCP.tool_definitions() == Tools.definitions()
   end
 
   test "skills_graph.list returns loaded graph ids" do
@@ -20,6 +25,12 @@ defmodule JidoSkillGraph.MCPToolsTest do
 
     assert {:ok, %{"graphs" => ["basic"], "count" => 1}} =
              Tools.call("skills_graph.list", %{}, store: store_name)
+
+    assert {:ok, %{"graphs" => ["basic"], "count" => 1}} =
+             CompatTools.call("skills_graph.list", %{}, store: store_name)
+
+    assert {:ok, %{"graphs" => ["basic"], "count" => 1}} =
+             MCP.call_tool("skills_graph.list", %{}, store: store_name)
   end
 
   test "skills_graph.topology returns graph summary" do

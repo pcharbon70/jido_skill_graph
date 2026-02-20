@@ -2,14 +2,13 @@
 
 `JidoSkillGraph` is a standalone Elixir library for building and querying markdown-based skill graphs.
 
-## Phase 12 Status
+## Phase 13 Status
 
-This phase adds explicit core telemetry contracts and documentation for runtime observability:
+This phase prepares MCP boundary extraction with a standalone-ready wrapper namespace:
 
-- `JidoSkillGraph.Loader` emits `[:jido_skill_graph, :loader, :reload]` with duration and status metadata
-- `JidoSkillGraph.Store` emits `[:jido_skill_graph, :store, :snapshot_swap]` for successful and failed swaps
-- `JidoSkillGraph.read_node_body/3` emits `[:jido_skill_graph, :query, :node_read]` for both success and failure
-- telemetry contracts and measurements are documented in `docs/architecture/telemetry-events.md`
+- `JidoSkillGraphMCP`, `JidoSkillGraphMCP.Tools`, and `JidoSkillGraphMCP.Resources` now own MCP behavior
+- existing `JidoSkillGraph.MCP*` modules are compatibility delegates to the new namespace
+- tests verify both the new namespace and compatibility layer return equivalent behavior
 
 ## Development
 
