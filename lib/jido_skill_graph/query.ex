@@ -3,7 +3,7 @@ defmodule JidoSkillGraph.Query do
   Query operations over immutable `JidoSkillGraph.Snapshot` structs.
   """
 
-  alias JidoSkillGraph.{Edge, SearchBackend, SkillFile, Snapshot}
+  alias JidoSkillGraph.{Edge, SearchBackend, SkillFile, Snapshot, Telemetry}
   alias JidoSkillGraph.SearchBackend.Basic, as: BasicSearch
 
   @type query_error ::
@@ -143,9 +143,16 @@ defmodule JidoSkillGraph.Query do
   @spec search(Snapshot.t() | nil, String.t(), String.t(), keyword()) ::
           {:ok, [SearchBackend.result()]} | {:error, query_error()}
   def search(snapshot, graph_id, query, opts \\ []) do
-    with {:ok, snapshot} <- ensure_graph(snapshot, graph_id),
-         {:ok, backend} <- search_backend(opts),
-         do: backend.search(snapshot, graph_id, query, opts)
+    started_at = System.monotonic_time()
+    configured_backend = Keyword.get(opts, :search_backend, BasicSearch)
+
+    result =
+      with {:ok, snapshot} <- ensure_graph(snapshot, graph_id),
+           {:ok, backend} <- search_backend(opts),
+           do: backend.search(snapshot, graph_id, query, opts)
+
+    emit_search_telemetry(started_at, graph_id, configured_backend, query, opts, result)
+    result
   end
 
   defp ensure_graph(nil, _graph_id), do: {:error, :graph_not_loaded}
@@ -274,6 +281,38 @@ defmodule JidoSkillGraph.Query do
 
   defp normalize_hops(hops) when is_integer(hops) and hops >= 1, do: hops
   defp normalize_hops(_hops), do: 1
+
+  defp emit_search_telemetry(started_at, graph_id, backend, query, opts, result) do
+    duration_native = System.monotonic_time() - started_at
+
+    measurements =
+      duration_native
+      |> Telemetry.duration_measurements()
+      |> Map.merge(%{
+        result_count: result_count(result),
+        query_bytes: query_size(query)
+      })
+
+    metadata = %{
+      status: search_status(result),
+      graph_id: graph_id,
+      backend: inspect(backend),
+      fields: Keyword.get(opts, :fields, :default),
+      limit: Keyword.get(opts, :limit, 20)
+    }
+
+    Telemetry.execute([:query, :search], measurements, metadata)
+  end
+
+  defp search_status({:ok, _results}), do: :ok
+  defp search_status({:error, _reason}), do: :error
+  defp search_status(_other), do: :error
+
+  defp result_count({:ok, results}) when is_list(results), do: length(results)
+  defp result_count(_result), do: 0
+
+  defp query_size(query) when is_binary(query), do: byte_size(query)
+  defp query_size(_query), do: 0
 
   defp traverse_neighbors(edges, root, hops, direction) do
     adjacency = build_adjacency(edges, direction)
