@@ -3,7 +3,7 @@ defmodule JidoSkillGraph.Snapshot do
   Snapshot model and unresolved-link policy contract.
   """
 
-  alias JidoSkillGraph.{Edge, Node}
+  alias JidoSkillGraph.{Edge, Node, SearchIndex}
 
   @type unresolved_link_policy :: :warn_and_skip | :error | :placeholder
 
@@ -16,6 +16,7 @@ defmodule JidoSkillGraph.Snapshot do
     :manifest,
     :version,
     :unresolved_link_policy,
+    :search_index,
     :ets_nodes,
     :ets_edges,
     nodes: %{},
@@ -30,6 +31,7 @@ defmodule JidoSkillGraph.Snapshot do
           manifest: term(),
           version: non_neg_integer(),
           unresolved_link_policy: unresolved_link_policy(),
+          search_index: SearchIndex.t() | nil,
           ets_nodes: term() | nil,
           ets_edges: term() | nil,
           nodes: %{required(String.t()) => Node.t()},
@@ -44,6 +46,7 @@ defmodule JidoSkillGraph.Snapshot do
           | {:manifest, term()}
           | {:version, non_neg_integer()}
           | {:unresolved_link_policy, unresolved_link_policy()}
+          | {:search_index, SearchIndex.t() | nil | keyword()}
           | {:ets_nodes, term() | nil}
           | {:ets_edges, term() | nil}
           | {:nodes, [Node.t()] | %{optional(String.t()) => Node.t()}}
@@ -66,6 +69,7 @@ defmodule JidoSkillGraph.Snapshot do
          :ok <- validate_policy(policy),
          {:ok, nodes} <- normalize_nodes(graph_id, Keyword.get(opts, :nodes, [])),
          {:ok, edges} <- normalize_edges(Keyword.get(opts, :edges, [])),
+         {:ok, search_index} <- normalize_search_index(Keyword.get(opts, :search_index)),
          {:ok, nodes, edges, warnings} <- resolve_edges(nodes, edges, graph_id, policy, []) do
       {:ok,
        %__MODULE__{
@@ -74,6 +78,7 @@ defmodule JidoSkillGraph.Snapshot do
          manifest: Keyword.get(opts, :manifest),
          version: Keyword.get(opts, :version, 0),
          unresolved_link_policy: policy,
+         search_index: search_index,
          ets_nodes: Keyword.get(opts, :ets_nodes),
          ets_edges: Keyword.get(opts, :ets_edges),
          nodes: nodes,
@@ -216,6 +221,19 @@ defmodule JidoSkillGraph.Snapshot do
       {:error, {:invalid_unresolved_link_policy, policy}}
     end
   end
+
+  defp normalize_search_index(nil), do: {:ok, nil}
+  defp normalize_search_index(%SearchIndex{} = search_index), do: {:ok, search_index}
+
+  defp normalize_search_index(search_index_opts) when is_list(search_index_opts) do
+    case SearchIndex.new(search_index_opts) do
+      {:ok, %SearchIndex{} = search_index} -> {:ok, search_index}
+      {:error, reason} -> {:error, {:invalid_search_index, reason}}
+    end
+  end
+
+  defp normalize_search_index(_search_index),
+    do: {:error, {:invalid_search_index, :invalid_shape}}
 
   @spec attach_ets(t(), term(), term()) :: t()
   def attach_ets(%__MODULE__{} = snapshot, ets_nodes, ets_edges) do
