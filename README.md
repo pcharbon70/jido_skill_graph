@@ -33,6 +33,12 @@ mix credo --strict
 mix dialyzer
 ```
 
+Run a local search baseline benchmark:
+
+```sh
+mix run scripts/search_benchmark.exs -- --backend basic --iterations 100
+```
+
 ## Local Development Configuration Example
 
 Supervised runtime with explicit store/loader names:

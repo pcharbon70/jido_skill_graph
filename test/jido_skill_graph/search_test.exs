@@ -2,6 +2,7 @@ defmodule JidoSkillGraph.SearchTest do
   use ExUnit.Case, async: true
 
   alias JidoSkillGraph.{Loader, SearchBackend, Store}
+  alias JidoSkillGraph.SearchBackend.Indexed
 
   defmodule StubBackend do
     @behaviour SearchBackend
@@ -37,6 +38,15 @@ defmodule JidoSkillGraph.SearchTest do
 
     assert {:ok, all} = JidoSkillGraph.search("basic", "a", store: store_name)
     assert length(all) >= length(one)
+  end
+
+  test "search/3 supports indexed backend toggle module" do
+    {store_name, _loader_name} = load_graph("basic", "basic")
+
+    assert {:ok, results} =
+             JidoSkillGraph.search("basic", "Alpha", store: store_name, search_backend: Indexed)
+
+    assert [%{id: "alpha"} | _] = results
   end
 
   test "search/3 allows pluggable backend" do

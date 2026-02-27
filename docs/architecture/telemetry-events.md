@@ -71,3 +71,24 @@ Metadata:
 - `version` - active snapshot version
 - `with_frontmatter` - whether `with_frontmatter: true` was requested
 - `trim` - whether `trim: true` was requested
+
+## Query Search
+
+- Event: `[:jido_skill_graph, :query, :search]`
+- Emitted when `JidoSkillGraph.search/3` completes (success or failure).
+
+Measurements:
+
+- `count` - always `1`
+- `duration_native` - elapsed time in native units
+- `duration_ms` - elapsed time in milliseconds
+- `result_count` - number of returned results (`0` on error)
+- `query_bytes` - query string byte size (`0` when query is non-binary)
+
+Metadata:
+
+- `status` - `:ok` or `:error`
+- `graph_id` - requested graph id
+- `backend` - configured backend module (inspected)
+- `fields` - requested fields option or `:default`
+- `limit` - requested limit option (defaults to `20`)

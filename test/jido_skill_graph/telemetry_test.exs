@@ -96,6 +96,55 @@ defmodule JidoSkillGraph.TelemetryTest do
                     }}
   end
 
+  test "query search emits telemetry for success and failure" do
+    _handler_id = attach_handler([[:jido_skill_graph, :query, :search]])
+    graph_id = "telemetry-search-#{System.unique_integer([:positive])}"
+
+    {store_name, _loader_name} = load_graph("basic", graph_id)
+
+    assert {:ok, _results} =
+             JidoSkillGraph.search(graph_id, "Alpha",
+               store: store_name,
+               fields: [:title],
+               limit: 5
+             )
+
+    assert_receive {:telemetry_event, [:jido_skill_graph, :query, :search], measurements,
+                    %{
+                      status: :ok,
+                      graph_id: ^graph_id,
+                      fields: [:title],
+                      limit: 5,
+                      backend: backend
+                    }}
+
+    assert measurements.count == 1
+    assert measurements.duration_ms >= 0
+    assert measurements.result_count > 0
+    assert measurements.query_bytes == byte_size("Alpha")
+    assert String.contains?(backend, "JidoSkillGraph.SearchBackend.Basic")
+
+    assert {:error, {:invalid_search_backend, :not_a_module}} =
+             JidoSkillGraph.search(graph_id, "Alpha",
+               store: store_name,
+               search_backend: :not_a_module
+             )
+
+    assert_receive {:telemetry_event, [:jido_skill_graph, :query, :search], fail_measurements,
+                    %{
+                      status: :error,
+                      graph_id: ^graph_id,
+                      limit: 20,
+                      backend: backend
+                    }}
+
+    assert fail_measurements.count == 1
+    assert fail_measurements.duration_ms >= 0
+    assert fail_measurements.result_count == 0
+    assert fail_measurements.query_bytes == byte_size("Alpha")
+    assert String.contains?(backend, ":not_a_module")
+  end
+
   def handle_telemetry(event, measurements, metadata, %{test_pid: test_pid}) do
     send(test_pid, {:telemetry_event, event, measurements, metadata})
   end
