@@ -3,7 +3,18 @@ defmodule JidoSkillGraph.Builder do
   Build pipeline entrypoint: discover -> parse -> extract -> resolve -> snapshot.
   """
 
-  alias JidoSkillGraph.{Discovery, Edge, LinkExtractor, Node, SkillFile, Snapshot, Topology}
+  alias JidoSkillGraph.{
+    Discovery,
+    Edge,
+    LinkExtractor,
+    Node,
+    SearchIndex,
+    SkillFile,
+    Snapshot,
+    Topology
+  }
+
+  alias JidoSkillGraph.SearchIndex.Tokenizer
 
   @type snapshot :: Snapshot.t()
 
@@ -12,6 +23,8 @@ defmodule JidoSkillGraph.Builder do
           | {:graph_id, String.t()}
           | {:manifest_path, Path.t()}
           | {:unresolved_link_policy, Snapshot.unresolved_link_policy()}
+          | {:search_index_build_version, pos_integer()}
+          | {:search_index_tokenizer_opts, [Tokenizer.option()]}
           | {:version, non_neg_integer()}
 
   @type link_spec :: %{
@@ -28,13 +41,39 @@ defmodule JidoSkillGraph.Builder do
   def build(opts \\ []) do
     with {:ok, discovery} <- discover(opts),
          {:ok, graph_id} <- resolve_graph_id(opts, discovery),
-         {:ok, nodes, link_specs} <- parse_nodes(discovery.files, discovery.root, graph_id),
+         {:ok, nodes, link_specs, field_lengths} <-
+           parse_nodes(
+             discovery.files,
+             discovery.root,
+             graph_id,
+             Keyword.get(opts, :search_index_tokenizer_opts, [])
+           ),
          {:ok, edges, warnings} <- resolve_links(nodes, link_specs),
-         do: build_snapshot(opts, discovery, graph_id, nodes, edges, warnings, link_specs)
+         do:
+           build_snapshot(
+             opts,
+             discovery,
+             graph_id,
+             nodes,
+             edges,
+             warnings,
+             link_specs,
+             field_lengths
+           )
   end
 
-  defp build_snapshot(opts, discovery, graph_id, nodes, edges, warnings, link_specs) do
-    with {:ok, snapshot} <-
+  defp build_snapshot(
+         opts,
+         discovery,
+         graph_id,
+         nodes,
+         edges,
+         warnings,
+         link_specs,
+         field_lengths
+       ) do
+    with {:ok, search_index} <- build_search_index(field_lengths, opts),
+         {:ok, snapshot} <-
            Snapshot.new(
              graph: nil,
              graph_id: graph_id,
@@ -43,13 +82,15 @@ defmodule JidoSkillGraph.Builder do
              nodes: nodes,
              edges: edges,
              unresolved_link_policy: Keyword.get(opts, :unresolved_link_policy, :warn_and_skip),
+             search_index: search_index,
              warnings: warnings,
              stats: %{
                mode: :pure,
                files: length(discovery.files),
                parsed_nodes: length(nodes),
                extracted_links: length(link_specs),
-               parsed_edges: length(edges)
+               parsed_edges: length(edges),
+               index_documents: map_size(field_lengths)
              }
            ) do
       graph = Topology.build(snapshot.nodes, snapshot.edges)
@@ -72,7 +113,8 @@ defmodule JidoSkillGraph.Builder do
       version: snapshot.version,
       nodes: snapshot_digest_nodes(snapshot.nodes),
       edges: snapshot_digest_edges(snapshot.edges),
-      warnings: snapshot.warnings
+      warnings: snapshot.warnings,
+      search_index: snapshot_digest_search_index(snapshot.search_index)
     }
 
     :sha256
@@ -93,6 +135,18 @@ defmodule JidoSkillGraph.Builder do
     edges
     |> Enum.map(fn edge -> {edge.from, edge.to, edge.rel, edge.label, edge.source_span} end)
     |> Enum.sort()
+  end
+
+  defp snapshot_digest_search_index(nil), do: nil
+
+  defp snapshot_digest_search_index(%SearchIndex{} = search_index) do
+    %{
+      build_version: search_index.build_version,
+      document_count: search_index.document_count,
+      avg_field_lengths: search_index.avg_field_lengths,
+      body_cache_meta: search_index.body_cache_meta,
+      meta: search_index.meta
+    }
   end
 
   defp discover(opts) do
@@ -125,28 +179,34 @@ defmodule JidoSkillGraph.Builder do
     |> Node.normalize_id()
   end
 
-  defp parse_nodes(files, root, graph_id) do
+  defp parse_nodes(files, root, graph_id, tokenizer_opts) do
     files
-    |> Enum.reduce_while({:ok, [], []}, fn path, {:ok, nodes, link_specs} ->
-      case parse_node(path, root, graph_id) do
-        {:ok, node, links} ->
-          {:cont, {:ok, [node | nodes], links ++ link_specs}}
+    |> Enum.reduce_while({:ok, [], [], %{}}, fn path, {:ok, nodes, link_specs, field_lengths} ->
+      case parse_node(path, root, graph_id, tokenizer_opts) do
+        {:ok, node, links, node_field_lengths} ->
+          {:cont,
+           {:ok, [node | nodes], links ++ link_specs,
+            Map.put(field_lengths, node.id, node_field_lengths)}}
 
         {:error, reason} ->
           {:halt, {:error, reason}}
       end
     end)
     |> case do
-      {:ok, nodes, link_specs} -> {:ok, Enum.reverse(nodes), Enum.reverse(link_specs)}
-      error -> error
+      {:ok, nodes, link_specs, field_lengths} ->
+        {:ok, Enum.reverse(nodes), Enum.reverse(link_specs), field_lengths}
+
+      error ->
+        error
     end
   end
 
-  defp parse_node(path, root, graph_id) do
+  defp parse_node(path, root, graph_id, tokenizer_opts) do
     with {:ok, %SkillFile{} = document} <- SkillFile.parse(path),
          {:ok, node} <- build_node(document, root, graph_id),
          {:ok, links} <- LinkExtractor.extract(document.body, frontmatter: document.frontmatter) do
-      {:ok, node, annotate_links(node.id, path, links)}
+      {:ok, node, annotate_links(node.id, path, links),
+       node_field_lengths(node, document, tokenizer_opts)}
     end
   end
 
@@ -174,6 +234,33 @@ defmodule JidoSkillGraph.Builder do
   end
 
   defp normalize_tags(_tags), do: []
+
+  defp node_field_lengths(node, document, tokenizer_opts) do
+    %{
+      id: token_count(node.id, tokenizer_opts),
+      title: token_count(node.title || "", tokenizer_opts),
+      tags: token_count(Enum.join(node.tags, " "), tokenizer_opts),
+      body: token_count(document.body, tokenizer_opts)
+    }
+  end
+
+  defp token_count(text, tokenizer_opts) when is_binary(text) do
+    text
+    |> Tokenizer.tokenize(tokenizer_opts)
+    |> length()
+  end
+
+  defp token_count(_text, _tokenizer_opts), do: 0
+
+  defp build_search_index(field_lengths, opts) do
+    SearchIndex.from_field_lengths(
+      field_lengths,
+      build_version: Keyword.get(opts, :search_index_build_version, 1),
+      meta: %{
+        tokenizer: Keyword.get(opts, :search_index_tokenizer_opts, [])
+      }
+    )
+  end
 
   defp annotate_links(node_id, source_path, links) do
     Enum.map(links, fn link ->
