@@ -122,7 +122,7 @@ defmodule JidoSkillGraph.TelemetryTest do
     assert measurements.duration_ms >= 0
     assert measurements.result_count > 0
     assert measurements.query_bytes == byte_size("Alpha")
-    assert String.contains?(backend, "JidoSkillGraph.SearchBackend.Basic")
+    assert String.contains?(backend, "JidoSkillGraph.SearchBackend.Indexed")
 
     assert {:error, {:invalid_search_backend, :not_a_module}} =
              JidoSkillGraph.search(graph_id, "Alpha",
