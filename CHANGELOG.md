@@ -12,7 +12,7 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Removed repository-owned MCP functionality.
 - Removed JidoAI-specific coupling from core package and docs.
 
-## [0.1.0] - Draft
+## [0.1.0] - 2026-02-28
 
 ### Added
 
