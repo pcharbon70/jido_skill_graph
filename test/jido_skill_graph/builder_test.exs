@@ -14,6 +14,10 @@ defmodule JidoSkillGraph.BuilderTest do
     assert Enum.member?(Graph.out_neighbors(snapshot.graph, "alpha"), "beta")
     assert snapshot.stats.graph_vertices == 2
     assert snapshot.stats.graph_edges == 2
+    assert snapshot.stats.index_documents == 2
+    assert %JidoSkillGraph.SearchIndex{} = snapshot.search_index
+    assert snapshot.search_index.document_count == 2
+    assert snapshot.search_index.avg_field_lengths.body > 0
 
     assert Enum.any?(snapshot.edges, fn edge ->
              edge.from == "alpha" and edge.to == "beta" and edge.rel == :prereq
@@ -52,6 +56,7 @@ defmodule JidoSkillGraph.BuilderTest do
 
     assert snapshot.graph_id == "manifest-subset"
     assert snapshot.nodes |> Map.keys() |> Enum.sort() == ["selected/a"]
+    assert snapshot.search_index.document_count == 1
   end
 
   test "build/1 returns parse errors for malformed frontmatter" do
@@ -83,9 +88,23 @@ defmodule JidoSkillGraph.BuilderTest do
     assert snapshot_a.nodes == snapshot_b.nodes
     assert snapshot_a.edges == snapshot_b.edges
     assert snapshot_a.warnings == snapshot_b.warnings
+    assert snapshot_a.search_index == snapshot_b.search_index
     assert snapshot_a.stats.snapshot_checksum == snapshot_b.stats.snapshot_checksum
     assert Graph.num_vertices(snapshot_a.graph) == Graph.num_vertices(snapshot_b.graph)
     assert Graph.num_edges(snapshot_a.graph) == Graph.num_edges(snapshot_b.graph)
+  end
+
+  test "build/1 accepts search index tokenizer opts" do
+    root = fixture_path("basic")
+
+    assert {:ok, snapshot} =
+             Builder.build(
+               root: root,
+               graph_id: "basic",
+               search_index_tokenizer_opts: [stopwords: ["alpha"], min_token_length: 3]
+             )
+
+    assert snapshot.search_index.meta.tokenizer == [stopwords: ["alpha"], min_token_length: 3]
   end
 
   defp fixture_path(name) do
