@@ -71,6 +71,35 @@ defmodule JidoSkillGraph.SearchTest do
     assert [%{id: "alpha", matches: [:id]} | _] = id_only_results
   end
 
+  test "indexed backend returns excerpts for body hits from cached text" do
+    {store_name, _loader_name} = load_graph("basic", "basic")
+
+    assert {:ok, body_results} =
+             JidoSkillGraph.search("basic", "references",
+               store: store_name,
+               search_backend: Indexed,
+               fields: [:body]
+             )
+
+    assert %{id: "alpha", excerpt: excerpt} = Enum.find(body_results, &(&1.id == "alpha"))
+    assert is_binary(excerpt)
+    assert String.contains?(String.downcase(excerpt), "references")
+  end
+
+  test "indexed backend falls back to nil excerpt when body cache is disabled" do
+    {store_name, _loader_name} =
+      load_graph("basic", "basic", search_index_body_cache_max_bytes: 0)
+
+    assert {:ok, body_results} =
+             JidoSkillGraph.search("basic", "references",
+               store: store_name,
+               search_backend: Indexed,
+               fields: [:body]
+             )
+
+    assert %{id: "alpha", excerpt: nil} = Enum.find(body_results, &(&1.id == "alpha"))
+  end
+
   test "indexed backend validates operator values" do
     {store_name, _loader_name} = load_graph("basic", "basic")
 
@@ -102,7 +131,7 @@ defmodule JidoSkillGraph.SearchTest do
              JidoSkillGraph.search("other", "x", store: store_name)
   end
 
-  defp load_graph(fixture, graph_id) do
+  defp load_graph(fixture, graph_id, builder_opts \\ []) do
     store_name = unique_name(:store)
     loader_name = unique_name(:loader)
 
@@ -113,7 +142,8 @@ defmodule JidoSkillGraph.SearchTest do
        name: loader_name,
        store: store_name,
        load_on_start: false,
-       builder_opts: [root: fixture_path(fixture), graph_id: graph_id]}
+       builder_opts:
+         Keyword.merge([root: fixture_path(fixture), graph_id: graph_id], builder_opts)}
     )
 
     assert :ok = Loader.reload(loader_name)

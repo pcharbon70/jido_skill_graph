@@ -249,10 +249,57 @@ defmodule JidoSkillGraph.SearchBackend.Indexed do
           tags: node.tags,
           score: score_to_int(candidate.score),
           matches: candidate.matched_fields |> MapSet.to_list() |> Enum.sort(),
-          excerpt: nil
+          excerpt: excerpt(snapshot, candidate)
         }
     end
   end
+
+  defp excerpt(snapshot, %{matched_fields: matched_fields, node_id: node_id, matched_terms: terms})
+       when is_struct(matched_fields, MapSet) and is_struct(terms, MapSet) do
+    if MapSet.member?(matched_fields, :body) do
+      snapshot
+      |> Snapshot.search_body_cache(node_id)
+      |> excerpt_from_body(terms)
+    else
+      nil
+    end
+  end
+
+  defp excerpt(_snapshot, _candidate), do: nil
+
+  defp excerpt_from_body(body, matched_terms)
+       when is_binary(body) and is_struct(matched_terms, MapSet) do
+    downcased_body = String.downcase(body)
+
+    term_match =
+      matched_terms
+      |> MapSet.to_list()
+      |> Enum.sort()
+      |> Enum.flat_map(fn term ->
+        case :binary.match(downcased_body, term) do
+          {position, length} -> [{position, length}]
+          :nomatch -> []
+        end
+      end)
+      |> Enum.sort_by(&elem(&1, 0))
+      |> List.first()
+
+    case term_match do
+      {position, _length} ->
+        start_at = max(position - 48, 0)
+        snippet_length = min(byte_size(body) - start_at, 120)
+        snippet = binary_part(body, start_at, snippet_length)
+
+        snippet
+        |> String.replace(~r/\s+/, " ")
+        |> String.trim()
+
+      nil ->
+        nil
+    end
+  end
+
+  defp excerpt_from_body(_body, _matched_terms), do: nil
 
   defp score_to_int(score) when is_float(score) do
     score

@@ -110,6 +110,39 @@ defmodule JidoSkillGraph.BuilderTest do
     assert snapshot.search_index.meta.tokenizer == [stopwords: ["alpha"], min_token_length: 3]
   end
 
+  test "build/1 applies max body cache bytes per node" do
+    root = fixture_path("basic")
+
+    assert {:ok, snapshot} =
+             Builder.build(
+               root: root,
+               graph_id: "basic",
+               search_index_body_cache_max_bytes: 12
+             )
+
+    assert snapshot.search_index.body_cache_meta.enabled
+    assert snapshot.search_index.body_cache_meta.max_bytes_per_node == 12
+    assert snapshot.search_index.body_cache_meta.cached_nodes == 2
+    assert byte_size(snapshot.search_index.meta.body_cache["alpha"]) <= 12
+    assert byte_size(snapshot.search_index.meta.body_cache["beta"]) <= 12
+  end
+
+  test "build/1 disables body cache entries when max bytes is zero" do
+    root = fixture_path("basic")
+
+    assert {:ok, snapshot} =
+             Builder.build(
+               root: root,
+               graph_id: "basic",
+               search_index_body_cache_max_bytes: 0
+             )
+
+    refute snapshot.search_index.body_cache_meta.enabled
+    assert snapshot.search_index.body_cache_meta.max_bytes_per_node == 0
+    assert snapshot.search_index.body_cache_meta.cached_nodes == 0
+    assert snapshot.search_index.meta.body_cache == %{}
+  end
+
   defp fixture_path(name) do
     Path.expand("../fixtures/phase4/#{name}", __DIR__)
   end
