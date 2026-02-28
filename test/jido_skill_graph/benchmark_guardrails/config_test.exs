@@ -25,6 +25,18 @@ defmodule JidoSkillGraph.BenchmarkGuardrails.ConfigTest do
            }
   end
 
+  test "load/1 normalizes and deduplicates enforce_profiles values" do
+    path =
+      write_temp_file("""
+      {
+        "enforce_profiles": [" Small ", "MEDIUM", "small", "all"]
+      }
+      """)
+
+    assert {:ok, %{"enforce_profiles" => profiles}} = Config.load(path)
+    assert profiles == ["small", "medium", "all"]
+  end
+
   test "load/1 returns decode_failed for malformed json" do
     path = write_temp_file("{invalid")
 
@@ -45,6 +57,64 @@ defmodule JidoSkillGraph.BenchmarkGuardrails.ConfigTest do
       )
 
     assert {:error, {:file_read_failed, :enoent}} = Config.load(missing_path)
+  end
+
+  test "load/1 returns invalid_value for non-positive speedup threshold" do
+    path =
+      write_temp_file("""
+      {
+        "min_speedup_p50": 0
+      }
+      """)
+
+    assert {:error, {:invalid_value, "min_speedup_p50", "must be > 0"}} = Config.load(path)
+  end
+
+  test "load/1 returns invalid_value for negative memory threshold" do
+    path =
+      write_temp_file("""
+      {
+        "max_memory_delta_mb": -1
+      }
+      """)
+
+    assert {:error, {:invalid_value, "max_memory_delta_mb", "must be >= 0"}} = Config.load(path)
+  end
+
+  test "load/1 returns invalid_value for non-list enforce_profiles" do
+    path =
+      write_temp_file("""
+      {
+        "enforce_profiles": "small,medium"
+      }
+      """)
+
+    assert {:error, {:invalid_value, "enforce_profiles", "must be an array of profile names"}} =
+             Config.load(path)
+  end
+
+  test "load/1 returns invalid_value for unknown enforce_profiles token" do
+    path =
+      write_temp_file("""
+      {
+        "enforce_profiles": ["small", "tiny"]
+      }
+      """)
+
+    assert {:error, {:invalid_value, "enforce_profiles", "contains unknown profile 'tiny'"}} =
+             Config.load(path)
+  end
+
+  test "load/1 returns invalid_value for non-string enforce_profiles entry" do
+    path =
+      write_temp_file("""
+      {
+        "enforce_profiles": ["small", 42]
+      }
+      """)
+
+    assert {:error, {:invalid_value, "enforce_profiles", "contains a non-string profile name"}} =
+             Config.load(path)
   end
 
   defp write_temp_file(contents) do
