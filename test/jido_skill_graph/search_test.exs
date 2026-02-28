@@ -49,6 +49,39 @@ defmodule JidoSkillGraph.SearchTest do
     assert [%{id: "alpha"} | _] = results
   end
 
+  test "indexed backend supports operator and field filters" do
+    {store_name, _loader_name} = load_graph("basic", "basic")
+
+    assert {:ok, and_results} =
+             JidoSkillGraph.search("basic", "alpha references",
+               store: store_name,
+               search_backend: Indexed,
+               operator: :and
+             )
+
+    assert Enum.map(and_results, & &1.id) == ["alpha"]
+
+    assert {:ok, id_only_results} =
+             JidoSkillGraph.search("basic", "alpha",
+               store: store_name,
+               search_backend: Indexed,
+               fields: [:id]
+             )
+
+    assert [%{id: "alpha", matches: [:id]} | _] = id_only_results
+  end
+
+  test "indexed backend validates operator values" do
+    {store_name, _loader_name} = load_graph("basic", "basic")
+
+    assert {:error, {:invalid_search_operator, :xor}} =
+             JidoSkillGraph.search("basic", "alpha",
+               store: store_name,
+               search_backend: Indexed,
+               operator: :xor
+             )
+  end
+
   test "search/3 allows pluggable backend" do
     {store_name, _loader_name} = load_graph("basic", "basic")
 
