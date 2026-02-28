@@ -22,6 +22,7 @@ defmodule JidoSkillGraph.Snapshot do
     :ets_search_postings,
     :ets_search_docs,
     :ets_search_trigrams,
+    :ets_search_bodies,
     nodes: %{},
     edges: [],
     warnings: [],
@@ -40,6 +41,7 @@ defmodule JidoSkillGraph.Snapshot do
           ets_search_postings: term() | nil,
           ets_search_docs: term() | nil,
           ets_search_trigrams: term() | nil,
+          ets_search_bodies: term() | nil,
           nodes: %{required(String.t()) => Node.t()},
           edges: [Edge.t()],
           warnings: [String.t()],
@@ -58,6 +60,7 @@ defmodule JidoSkillGraph.Snapshot do
           | {:ets_search_postings, term() | nil}
           | {:ets_search_docs, term() | nil}
           | {:ets_search_trigrams, term() | nil}
+          | {:ets_search_bodies, term() | nil}
           | {:nodes, [Node.t()] | %{optional(String.t()) => Node.t()}}
           | {:edges, [Edge.t()]}
           | {:warnings, [String.t()]}
@@ -93,6 +96,7 @@ defmodule JidoSkillGraph.Snapshot do
          ets_search_postings: Keyword.get(opts, :ets_search_postings),
          ets_search_docs: Keyword.get(opts, :ets_search_docs),
          ets_search_trigrams: Keyword.get(opts, :ets_search_trigrams),
+         ets_search_bodies: Keyword.get(opts, :ets_search_bodies),
          nodes: nodes,
          edges: edges,
          warnings: Keyword.get(opts, :warnings, []) ++ Enum.reverse(warnings),
@@ -261,13 +265,35 @@ defmodule JidoSkillGraph.Snapshot do
         ets_search_docs,
         ets_search_trigrams
       ) do
+    attach_ets(
+      snapshot,
+      ets_nodes,
+      ets_edges,
+      ets_search_postings,
+      ets_search_docs,
+      ets_search_trigrams,
+      nil
+    )
+  end
+
+  @spec attach_ets(t(), term(), term(), term(), term(), term(), term()) :: t()
+  def attach_ets(
+        %__MODULE__{} = snapshot,
+        ets_nodes,
+        ets_edges,
+        ets_search_postings,
+        ets_search_docs,
+        ets_search_trigrams,
+        ets_search_bodies
+      ) do
     %{
       snapshot
       | ets_nodes: ets_nodes,
         ets_edges: ets_edges,
         ets_search_postings: ets_search_postings,
         ets_search_docs: ets_search_docs,
-        ets_search_trigrams: ets_search_trigrams
+        ets_search_trigrams: ets_search_trigrams,
+        ets_search_bodies: ets_search_bodies
     }
   end
 
@@ -374,6 +400,19 @@ defmodule JidoSkillGraph.Snapshot do
     fallback_search_doc_stats(snapshot, node_id)
   end
 
+  @spec search_body_cache(t(), String.t()) :: String.t() | nil
+  def search_body_cache(%__MODULE__{ets_search_bodies: ets_search_bodies} = snapshot, node_id)
+      when not is_nil(ets_search_bodies) and is_binary(node_id) do
+    case safe_ets_lookup(ets_search_bodies, node_id) do
+      [{^node_id, body}] when is_binary(body) -> body
+      _ -> fallback_search_body_cache(snapshot, node_id)
+    end
+  end
+
+  def search_body_cache(%__MODULE__{} = snapshot, node_id) when is_binary(node_id) do
+    fallback_search_body_cache(snapshot, node_id)
+  end
+
   @spec search_corpus_stats(t()) :: map()
   def search_corpus_stats(%__MODULE__{ets_search_docs: ets_search_docs} = snapshot)
       when not is_nil(ets_search_docs) do
@@ -411,6 +450,17 @@ defmodule JidoSkillGraph.Snapshot do
   end
 
   defp fallback_search_doc_stats(_snapshot, _node_id), do: nil
+
+  defp fallback_search_body_cache(
+         %__MODULE__{search_index: %SearchIndex{} = search_index},
+         node_id
+       ) do
+    search_index.meta
+    |> Map.get(:body_cache, %{})
+    |> Map.get(node_id)
+  end
+
+  defp fallback_search_body_cache(_snapshot, _node_id), do: nil
 
   defp fallback_search_corpus_stats(%__MODULE__{search_index: %SearchIndex{} = search_index}) do
     %{

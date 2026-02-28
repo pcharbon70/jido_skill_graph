@@ -25,6 +25,7 @@ defmodule JidoSkillGraph.Builder do
           | {:unresolved_link_policy, Snapshot.unresolved_link_policy()}
           | {:search_index_build_version, pos_integer()}
           | {:search_index_tokenizer_opts, [Tokenizer.option()]}
+          | {:search_index_body_cache_max_bytes, non_neg_integer()}
           | {:version, non_neg_integer()}
 
   @type link_spec :: %{
@@ -41,12 +42,13 @@ defmodule JidoSkillGraph.Builder do
   def build(opts \\ []) do
     with {:ok, discovery} <- discover(opts),
          {:ok, graph_id} <- resolve_graph_id(opts, discovery),
-         {:ok, nodes, link_specs, field_lengths, postings, document_frequencies} <-
+         {:ok, nodes, link_specs, field_lengths, postings, document_frequencies, body_cache} <-
            parse_nodes(
              discovery.files,
              discovery.root,
              graph_id,
-             Keyword.get(opts, :search_index_tokenizer_opts, [])
+             Keyword.get(opts, :search_index_tokenizer_opts, []),
+             normalize_body_cache_max_bytes(opts)
            ),
          {:ok, edges, warnings} <- resolve_links(nodes, link_specs),
          do:
@@ -60,7 +62,8 @@ defmodule JidoSkillGraph.Builder do
              link_specs: link_specs,
              field_lengths: field_lengths,
              postings: postings,
-             document_frequencies: document_frequencies
+             document_frequencies: document_frequencies,
+             body_cache: body_cache
            })
   end
 
@@ -74,10 +77,11 @@ defmodule JidoSkillGraph.Builder do
          link_specs: link_specs,
          field_lengths: field_lengths,
          postings: postings,
-         document_frequencies: document_frequencies
+         document_frequencies: document_frequencies,
+         body_cache: body_cache
        }) do
     with {:ok, search_index} <-
-           build_search_index(field_lengths, postings, document_frequencies, opts),
+           build_search_index(field_lengths, postings, document_frequencies, body_cache, opts),
          {:ok, snapshot} <-
            Snapshot.new(
              graph: nil,
@@ -184,18 +188,19 @@ defmodule JidoSkillGraph.Builder do
     |> Node.normalize_id()
   end
 
-  defp parse_nodes(files, root, graph_id, tokenizer_opts) do
+  defp parse_nodes(files, root, graph_id, tokenizer_opts, body_cache_max_bytes) do
     files
     |> Enum.reduce_while(
-      {:ok, [], [], %{}, %{}, %{}},
-      fn path, {:ok, nodes, link_specs, field_lengths, postings, document_frequencies} ->
-        case parse_node(path, root, graph_id, tokenizer_opts) do
-          {:ok, node, links, node_field_lengths, node_postings, node_terms} ->
+      {:ok, [], [], %{}, %{}, %{}, %{}},
+      fn path, {:ok, nodes, link_specs, field_lengths, postings, document_frequencies, body_cache} ->
+        case parse_node(path, root, graph_id, tokenizer_opts, body_cache_max_bytes) do
+          {:ok, node, links, node_field_lengths, node_postings, node_terms, node_body_cache} ->
             {:cont,
              {:ok, [node | nodes], links ++ link_specs,
               Map.put(field_lengths, node.id, node_field_lengths),
               merge_postings(postings, node.id, node_postings),
-              merge_document_frequencies(document_frequencies, node_terms)}}
+              merge_document_frequencies(document_frequencies, node_terms),
+              merge_body_cache(body_cache, node.id, node_body_cache)}}
 
           {:error, reason} ->
             {:halt, {:error, reason}}
@@ -203,24 +208,26 @@ defmodule JidoSkillGraph.Builder do
       end
     )
     |> case do
-      {:ok, nodes, link_specs, field_lengths, postings, document_frequencies} ->
+      {:ok, nodes, link_specs, field_lengths, postings, document_frequencies, body_cache} ->
         {:ok, Enum.reverse(nodes), Enum.reverse(link_specs), field_lengths, postings,
-         document_frequencies}
+         document_frequencies, body_cache}
 
       error ->
         error
     end
   end
 
-  defp parse_node(path, root, graph_id, tokenizer_opts) do
+  defp parse_node(path, root, graph_id, tokenizer_opts, body_cache_max_bytes) do
     with {:ok, %SkillFile{} = document} <- SkillFile.parse(path),
          {:ok, node} <- build_node(document, root, graph_id),
          {:ok, links} <- LinkExtractor.extract(document.body, frontmatter: document.frontmatter) do
       {node_field_lengths, node_postings, node_terms} =
         node_search_index_data(node, document, tokenizer_opts)
 
+      node_body_cache = body_cache_entry(document.body, body_cache_max_bytes)
+
       {:ok, node, annotate_links(node.id, path, links), node_field_lengths, node_postings,
-       node_terms}
+       node_terms, node_body_cache}
     end
   end
 
@@ -294,23 +301,64 @@ defmodule JidoSkillGraph.Builder do
     end)
   end
 
-  defp build_search_index(field_lengths, postings, document_frequencies, opts) do
+  defp merge_body_cache(acc, _node_id, nil), do: acc
+  defp merge_body_cache(acc, node_id, body_text), do: Map.put(acc, node_id, body_text)
+
+  defp body_cache_entry(_body, max_bytes) when max_bytes <= 0, do: nil
+
+  defp body_cache_entry(body, max_bytes) when is_binary(body) and max_bytes > 0 do
+    body
+    |> String.replace(~r/\s+/, " ")
+    |> String.trim()
+    |> case do
+      "" ->
+        nil
+
+      normalized ->
+        if byte_size(normalized) <= max_bytes do
+          normalized
+        else
+          normalized
+          |> String.slice(0, max_bytes)
+          |> String.trim()
+        end
+    end
+  end
+
+  defp body_cache_entry(_body, _max_bytes), do: nil
+
+  defp build_search_index(field_lengths, postings, document_frequencies, body_cache, opts) do
     postings =
       postings
       |> Enum.into(%{}, fn {key, rows} ->
         {key, Enum.sort_by(rows, &elem(&1, 0))}
       end)
 
+    body_cache_max_bytes = normalize_body_cache_max_bytes(opts)
+
     SearchIndex.from_field_lengths(
       field_lengths,
       build_version: Keyword.get(opts, :search_index_build_version, 1),
+      body_cache_meta: %{
+        enabled: body_cache_max_bytes > 0,
+        max_bytes_per_node: body_cache_max_bytes,
+        cached_nodes: map_size(body_cache)
+      },
       meta: %{
         tokenizer: Keyword.get(opts, :search_index_tokenizer_opts, []),
         field_lengths_by_doc: field_lengths,
         postings: postings,
-        document_frequencies: document_frequencies
+        document_frequencies: document_frequencies,
+        body_cache: body_cache
       }
     )
+  end
+
+  defp normalize_body_cache_max_bytes(opts) do
+    case Keyword.get(opts, :search_index_body_cache_max_bytes, 1_024) do
+      n when is_integer(n) and n >= 0 -> n
+      _ -> 1_024
+    end
   end
 
   defp annotate_links(node_id, source_path, links) do

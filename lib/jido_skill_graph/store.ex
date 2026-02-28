@@ -19,6 +19,7 @@ defmodule JidoSkillGraph.Store do
           ets_search_postings: term() | nil,
           ets_search_docs: term() | nil,
           ets_search_trigrams: term() | nil,
+          ets_search_bodies: term() | nil,
           version: non_neg_integer(),
           updated_at: DateTime.t() | nil
         }
@@ -67,6 +68,7 @@ defmodule JidoSkillGraph.Store do
       ets_search_postings: nil,
       ets_search_docs: nil,
       ets_search_trigrams: nil,
+      ets_search_bodies: nil,
       version: 0,
       updated_at: nil
     }
@@ -84,6 +86,7 @@ defmodule JidoSkillGraph.Store do
     maybe_delete_table(state.ets_search_postings)
     maybe_delete_table(state.ets_search_docs)
     maybe_delete_table(state.ets_search_trigrams)
+    maybe_delete_table(state.ets_search_bodies)
     :ok
   end
 
@@ -122,7 +125,8 @@ defmodule JidoSkillGraph.Store do
     }
 
     case build_ets_indexes(next_snapshot) do
-      {:ok, ets_nodes, ets_edges, ets_search_postings, ets_search_docs, ets_search_trigrams} ->
+      {:ok, ets_nodes, ets_edges, ets_search_postings, ets_search_docs, ets_search_trigrams,
+       ets_search_bodies} ->
         indexed_snapshot =
           Snapshot.attach_ets(
             next_snapshot,
@@ -130,7 +134,8 @@ defmodule JidoSkillGraph.Store do
             ets_edges,
             ets_search_postings,
             ets_search_docs,
-            ets_search_trigrams
+            ets_search_trigrams,
+            ets_search_bodies
           )
 
         :persistent_term.put(state.persistent_key, indexed_snapshot)
@@ -140,6 +145,7 @@ defmodule JidoSkillGraph.Store do
         maybe_delete_replaced_table(state.ets_search_postings, ets_search_postings)
         maybe_delete_replaced_table(state.ets_search_docs, ets_search_docs)
         maybe_delete_replaced_table(state.ets_search_trigrams, ets_search_trigrams)
+        maybe_delete_replaced_table(state.ets_search_bodies, ets_search_bodies)
         emit_swap_telemetry(started_at, :ok, indexed_snapshot)
 
         {:reply, {:ok, indexed_snapshot},
@@ -150,7 +156,8 @@ defmodule JidoSkillGraph.Store do
              ets_edges: ets_edges,
              ets_search_postings: ets_search_postings,
              ets_search_docs: ets_search_docs,
-             ets_search_trigrams: ets_search_trigrams
+             ets_search_trigrams: ets_search_trigrams,
+             ets_search_bodies: ets_search_bodies
          }}
 
       {:error, reason} ->
@@ -191,6 +198,13 @@ defmodule JidoSkillGraph.Store do
       {:write_concurrency, false}
     ]
 
+    body_cache_table_opts = [
+      :set,
+      :protected,
+      {:read_concurrency, true},
+      {:write_concurrency, false}
+    ]
+
     trigram_table_opts = [
       :duplicate_bag,
       :protected,
@@ -203,6 +217,7 @@ defmodule JidoSkillGraph.Store do
       {:ets_edges, edge_table_opts},
       {:ets_search_postings, posting_table_opts},
       {:ets_search_docs, doc_stats_table_opts},
+      {:ets_search_bodies, body_cache_table_opts},
       {:ets_search_trigrams, trigram_table_opts}
     ]
 
@@ -211,7 +226,7 @@ defmodule JidoSkillGraph.Store do
         case populate_index_tables(snapshot, tables) do
           :ok ->
             {:ok, tables.ets_nodes, tables.ets_edges, tables.ets_search_postings,
-             tables.ets_search_docs, tables.ets_search_trigrams}
+             tables.ets_search_docs, tables.ets_search_trigrams, tables.ets_search_bodies}
 
           {:error, reason} ->
             maybe_delete_tables(Map.values(tables))
@@ -240,7 +255,8 @@ defmodule JidoSkillGraph.Store do
     with :ok <- insert_nodes(tables.ets_nodes, snapshot.nodes),
          :ok <- insert_edges(tables.ets_edges, snapshot.edges),
          :ok <- insert_search_postings(tables.ets_search_postings, snapshot),
-         :ok <- insert_search_doc_stats(tables.ets_search_docs, snapshot) do
+         :ok <- insert_search_doc_stats(tables.ets_search_docs, snapshot),
+         :ok <- insert_search_body_cache(tables.ets_search_bodies, snapshot) do
       insert_search_trigram_placeholders(tables.ets_search_trigrams, snapshot)
     end
   end
@@ -308,6 +324,19 @@ defmodule JidoSkillGraph.Store do
     :ok
   catch
     kind, reason -> {:error, {:insert_search_doc_stats_failed, {kind, reason}}}
+  end
+
+  defp insert_search_body_cache(ets_search_bodies, %Snapshot{} = snapshot) do
+    rows =
+      snapshot
+      |> search_index_meta()
+      |> Map.get(:body_cache, %{})
+      |> Enum.map(fn {node_id, body} -> {node_id, body} end)
+
+    true = :ets.insert(ets_search_bodies, rows)
+    :ok
+  catch
+    kind, reason -> {:error, {:insert_search_body_cache_failed, {kind, reason}}}
   end
 
   # Placeholder table for Phase 6 trigram index.

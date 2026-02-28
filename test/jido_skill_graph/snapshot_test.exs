@@ -67,6 +67,7 @@ defmodule JidoSkillGraph.SnapshotTest do
     ets_search_postings = :ets.new(__MODULE__, [:duplicate_bag, :protected])
     ets_search_docs = :ets.new(__MODULE__, [:set, :protected])
     ets_search_trigrams = :ets.new(__MODULE__, [:duplicate_bag, :protected])
+    ets_search_bodies = :ets.new(__MODULE__, [:set, :protected])
 
     true =
       :ets.insert(ets_nodes, [{"a", node_a}, {"b", node_b}])
@@ -78,6 +79,7 @@ defmodule JidoSkillGraph.SnapshotTest do
     true = :ets.insert(ets_search_docs, [{"a", %{id: 1, title: 1, tags: 0, body: 2}}])
     true = :ets.insert(ets_search_docs, [{:__meta__, %{document_count: 2}}])
     true = :ets.insert(ets_search_trigrams, [{:__meta__, %{enabled: false}}])
+    true = :ets.insert(ets_search_bodies, [{"a", "alpha cached body"}])
 
     indexed =
       Snapshot.attach_ets(
@@ -86,7 +88,8 @@ defmodule JidoSkillGraph.SnapshotTest do
         ets_edges,
         ets_search_postings,
         ets_search_docs,
-        ets_search_trigrams
+        ets_search_trigrams,
+        ets_search_bodies
       )
 
     assert Snapshot.node_ids(indexed) |> Enum.sort() == ["a", "b"]
@@ -97,6 +100,31 @@ defmodule JidoSkillGraph.SnapshotTest do
     assert Snapshot.search_postings(indexed, "alpha", :id) == [{"a", 1}]
     assert Snapshot.search_doc_stats(indexed, "a") == %{id: 1, title: 1, tags: 0, body: 2}
     assert Snapshot.search_corpus_stats(indexed) == %{document_count: 2}
+    assert Snapshot.search_body_cache(indexed, "a") == "alpha cached body"
+  end
+
+  test "search_body_cache/2 falls back to snapshot metadata when ETS cache is unavailable" do
+    node = Node.placeholder("graph", "a")
+
+    assert {:ok, search_index} =
+             SearchIndex.new(
+               build_version: 1,
+               document_count: 1,
+               avg_field_lengths: %{id: 1.0, title: 0.0, tags: 0.0, body: 3.0},
+               meta: %{body_cache: %{"a" => "cached via metadata"}}
+             )
+
+    assert {:ok, snapshot} =
+             Snapshot.new(
+               graph_id: "graph",
+               nodes: [node],
+               edges: [],
+               unresolved_link_policy: :warn_and_skip,
+               search_index: search_index
+             )
+
+    assert Snapshot.search_body_cache(snapshot, "a") == "cached via metadata"
+    assert Snapshot.search_body_cache(snapshot, "missing") == nil
   end
 
   test "new/1 accepts search index metadata" do
