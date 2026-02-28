@@ -16,6 +16,9 @@ defmodule JidoSkillGraph.Store do
           snapshot: Snapshot.t() | nil,
           ets_nodes: term() | nil,
           ets_edges: term() | nil,
+          ets_search_postings: term() | nil,
+          ets_search_docs: term() | nil,
+          ets_search_trigrams: term() | nil,
           version: non_neg_integer(),
           updated_at: DateTime.t() | nil
         }
@@ -61,6 +64,9 @@ defmodule JidoSkillGraph.Store do
       snapshot: nil,
       ets_nodes: nil,
       ets_edges: nil,
+      ets_search_postings: nil,
+      ets_search_docs: nil,
+      ets_search_trigrams: nil,
       version: 0,
       updated_at: nil
     }
@@ -75,6 +81,9 @@ defmodule JidoSkillGraph.Store do
     :persistent_term.erase(state.persistent_key)
     maybe_delete_table(state.ets_nodes)
     maybe_delete_table(state.ets_edges)
+    maybe_delete_table(state.ets_search_postings)
+    maybe_delete_table(state.ets_search_docs)
+    maybe_delete_table(state.ets_search_trigrams)
     :ok
   end
 
@@ -113,17 +122,36 @@ defmodule JidoSkillGraph.Store do
     }
 
     case build_ets_indexes(next_snapshot) do
-      {:ok, ets_nodes, ets_edges} ->
-        indexed_snapshot = Snapshot.attach_ets(next_snapshot, ets_nodes, ets_edges)
+      {:ok, ets_nodes, ets_edges, ets_search_postings, ets_search_docs, ets_search_trigrams} ->
+        indexed_snapshot =
+          Snapshot.attach_ets(
+            next_snapshot,
+            ets_nodes,
+            ets_edges,
+            ets_search_postings,
+            ets_search_docs,
+            ets_search_trigrams
+          )
 
         :persistent_term.put(state.persistent_key, indexed_snapshot)
 
         maybe_delete_replaced_table(state.ets_nodes, ets_nodes)
         maybe_delete_replaced_table(state.ets_edges, ets_edges)
+        maybe_delete_replaced_table(state.ets_search_postings, ets_search_postings)
+        maybe_delete_replaced_table(state.ets_search_docs, ets_search_docs)
+        maybe_delete_replaced_table(state.ets_search_trigrams, ets_search_trigrams)
         emit_swap_telemetry(started_at, :ok, indexed_snapshot)
 
         {:reply, {:ok, indexed_snapshot},
-         %{next_state | snapshot: indexed_snapshot, ets_nodes: ets_nodes, ets_edges: ets_edges}}
+         %{
+           next_state
+           | snapshot: indexed_snapshot,
+             ets_nodes: ets_nodes,
+             ets_edges: ets_edges,
+             ets_search_postings: ets_search_postings,
+             ets_search_docs: ets_search_docs,
+             ets_search_trigrams: ets_search_trigrams
+         }}
 
       {:error, reason} ->
         emit_swap_failure_telemetry(started_at, reason)
@@ -149,32 +177,71 @@ defmodule JidoSkillGraph.Store do
       {:write_concurrency, false}
     ]
 
-    case new_ets_table(node_table_opts) do
-      {:ok, ets_nodes} -> build_ets_indexes(snapshot, ets_nodes, edge_table_opts)
-      {:error, reason} -> {:error, {:ets_index_build_failed, reason}}
-    end
-  end
+    posting_table_opts = [
+      :duplicate_bag,
+      :protected,
+      {:read_concurrency, true},
+      {:write_concurrency, false}
+    ]
 
-  defp build_ets_indexes(%Snapshot{} = snapshot, ets_nodes, edge_table_opts) do
-    case new_ets_table(edge_table_opts) do
-      {:ok, ets_edges} ->
-        populate_ets_indexes(snapshot, ets_nodes, ets_edges)
+    doc_stats_table_opts = [
+      :set,
+      :protected,
+      {:read_concurrency, true},
+      {:write_concurrency, false}
+    ]
+
+    trigram_table_opts = [
+      :duplicate_bag,
+      :protected,
+      {:read_concurrency, true},
+      {:write_concurrency, false}
+    ]
+
+    table_specs = [
+      {:ets_nodes, node_table_opts},
+      {:ets_edges, edge_table_opts},
+      {:ets_search_postings, posting_table_opts},
+      {:ets_search_docs, doc_stats_table_opts},
+      {:ets_search_trigrams, trigram_table_opts}
+    ]
+
+    case create_index_tables(table_specs, %{}) do
+      {:ok, tables} ->
+        case populate_index_tables(snapshot, tables) do
+          :ok ->
+            {:ok, tables.ets_nodes, tables.ets_edges, tables.ets_search_postings,
+             tables.ets_search_docs, tables.ets_search_trigrams}
+
+          {:error, reason} ->
+            maybe_delete_tables(Map.values(tables))
+            {:error, {:ets_index_build_failed, reason}}
+        end
 
       {:error, reason} ->
-        maybe_delete_table(ets_nodes)
         {:error, {:ets_index_build_failed, reason}}
     end
   end
 
-  defp populate_ets_indexes(%Snapshot{} = snapshot, ets_nodes, ets_edges) do
-    with :ok <- insert_nodes(ets_nodes, snapshot.nodes),
-         :ok <- insert_edges(ets_edges, snapshot.edges) do
-      {:ok, ets_nodes, ets_edges}
-    else
+  defp create_index_tables([], tables), do: {:ok, tables}
+
+  defp create_index_tables([{key, opts} | rest], tables) do
+    case new_ets_table(opts) do
+      {:ok, table} ->
+        create_index_tables(rest, Map.put(tables, key, table))
+
       {:error, reason} ->
-        maybe_delete_table(ets_nodes)
-        maybe_delete_table(ets_edges)
-        {:error, {:ets_index_build_failed, reason}}
+        maybe_delete_tables(Map.values(tables))
+        {:error, reason}
+    end
+  end
+
+  defp populate_index_tables(%Snapshot{} = snapshot, tables) do
+    with :ok <- insert_nodes(tables.ets_nodes, snapshot.nodes),
+         :ok <- insert_edges(tables.ets_edges, snapshot.edges),
+         :ok <- insert_search_postings(tables.ets_search_postings, snapshot),
+         :ok <- insert_search_doc_stats(tables.ets_search_docs, snapshot) do
+      insert_search_trigram_placeholders(tables.ets_search_trigrams, snapshot)
     end
   end
 
@@ -208,8 +275,63 @@ defmodule JidoSkillGraph.Store do
     kind, reason -> {:error, {:insert_edges_failed, {kind, reason}}}
   end
 
+  defp insert_search_postings(ets_search_postings, %Snapshot{} = snapshot) do
+    postings =
+      snapshot
+      |> search_index_meta()
+      |> Map.get(:postings, %{})
+
+    rows =
+      postings
+      |> Enum.flat_map(fn {{term, field}, node_rows} ->
+        Enum.map(node_rows, fn {node_id, tf} -> {{term, field}, node_id, tf} end)
+      end)
+
+    true = :ets.insert(ets_search_postings, rows)
+    :ok
+  catch
+    kind, reason -> {:error, {:insert_search_postings_failed, {kind, reason}}}
+  end
+
+  defp insert_search_doc_stats(ets_search_docs, %Snapshot{} = snapshot) do
+    field_lengths_by_doc =
+      snapshot
+      |> search_index_meta()
+      |> Map.get(:field_lengths_by_doc, %{})
+
+    rows =
+      field_lengths_by_doc
+      |> Enum.map(fn {node_id, field_lengths} -> {node_id, field_lengths} end)
+      |> then(&[{:__meta__, Snapshot.search_corpus_stats(snapshot)} | &1])
+
+    true = :ets.insert(ets_search_docs, rows)
+    :ok
+  catch
+    kind, reason -> {:error, {:insert_search_doc_stats_failed, {kind, reason}}}
+  end
+
+  # Placeholder table for Phase 6 trigram index.
+  defp insert_search_trigram_placeholders(ets_search_trigrams, %Snapshot{} = snapshot) do
+    rows = [{:__meta__, %{enabled: false, graph_id: snapshot.graph_id}}]
+    true = :ets.insert(ets_search_trigrams, rows)
+    :ok
+  catch
+    kind, reason -> {:error, {:insert_search_trigrams_failed, {kind, reason}}}
+  end
+
+  defp search_index_meta(%Snapshot{search_index: nil}), do: %{}
+  defp search_index_meta(%Snapshot{search_index: search_index}), do: search_index.meta
+
   defp maybe_delete_replaced_table(old, new) when old == new, do: :ok
   defp maybe_delete_replaced_table(old, _new), do: maybe_delete_table(old)
+
+  defp maybe_delete_tables(tables) do
+    tables
+    |> Enum.reject(&is_nil/1)
+    |> Enum.each(&maybe_delete_table/1)
+
+    :ok
+  end
 
   defp maybe_delete_table(nil), do: :ok
 
@@ -222,12 +344,19 @@ defmodule JidoSkillGraph.Store do
   end
 
   defp emit_swap_telemetry(started_at, status, snapshot) do
+    search_term_count =
+      snapshot
+      |> search_index_meta()
+      |> Map.get(:postings, %{})
+      |> map_size()
+
     metadata = %{
       status: status,
       graph_id: snapshot.graph_id,
       version: snapshot.version,
       node_count: Snapshot.node_ids(snapshot) |> length(),
-      edge_count: Snapshot.edges(snapshot) |> length()
+      edge_count: Snapshot.edges(snapshot) |> length(),
+      search_term_count: search_term_count
     }
 
     emit_snapshot_swap_telemetry(started_at, metadata)

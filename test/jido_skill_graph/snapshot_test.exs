@@ -64,6 +64,9 @@ defmodule JidoSkillGraph.SnapshotTest do
 
     ets_nodes = :ets.new(__MODULE__, [:set, :protected])
     ets_edges = :ets.new(__MODULE__, [:duplicate_bag, :protected])
+    ets_search_postings = :ets.new(__MODULE__, [:duplicate_bag, :protected])
+    ets_search_docs = :ets.new(__MODULE__, [:set, :protected])
+    ets_search_trigrams = :ets.new(__MODULE__, [:duplicate_bag, :protected])
 
     true =
       :ets.insert(ets_nodes, [{"a", node_a}, {"b", node_b}])
@@ -71,13 +74,29 @@ defmodule JidoSkillGraph.SnapshotTest do
     true =
       :ets.insert(ets_edges, [{:all, edge}, {{:out, "a"}, edge}, {{:in, "b"}, edge}])
 
-    indexed = Snapshot.attach_ets(snapshot, ets_nodes, ets_edges)
+    true = :ets.insert(ets_search_postings, [{{"alpha", :id}, "a", 1}])
+    true = :ets.insert(ets_search_docs, [{"a", %{id: 1, title: 1, tags: 0, body: 2}}])
+    true = :ets.insert(ets_search_docs, [{:__meta__, %{document_count: 2}}])
+    true = :ets.insert(ets_search_trigrams, [{:__meta__, %{enabled: false}}])
+
+    indexed =
+      Snapshot.attach_ets(
+        snapshot,
+        ets_nodes,
+        ets_edges,
+        ets_search_postings,
+        ets_search_docs,
+        ets_search_trigrams
+      )
 
     assert Snapshot.node_ids(indexed) |> Enum.sort() == ["a", "b"]
     assert %Node{id: "a"} = Snapshot.get_node(indexed, "a")
     assert Snapshot.edges(indexed) == [edge]
     assert Snapshot.out_edges(indexed, "a") == [edge]
     assert Snapshot.in_edges(indexed, "b") == [edge]
+    assert Snapshot.search_postings(indexed, "alpha", :id) == [{"a", 1}]
+    assert Snapshot.search_doc_stats(indexed, "a") == %{id: 1, title: 1, tags: 0, body: 2}
+    assert Snapshot.search_corpus_stats(indexed) == %{document_count: 2}
   end
 
   test "new/1 accepts search index metadata" do

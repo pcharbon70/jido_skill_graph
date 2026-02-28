@@ -19,6 +19,9 @@ defmodule JidoSkillGraph.Snapshot do
     :search_index,
     :ets_nodes,
     :ets_edges,
+    :ets_search_postings,
+    :ets_search_docs,
+    :ets_search_trigrams,
     nodes: %{},
     edges: [],
     warnings: [],
@@ -34,6 +37,9 @@ defmodule JidoSkillGraph.Snapshot do
           search_index: SearchIndex.t() | nil,
           ets_nodes: term() | nil,
           ets_edges: term() | nil,
+          ets_search_postings: term() | nil,
+          ets_search_docs: term() | nil,
+          ets_search_trigrams: term() | nil,
           nodes: %{required(String.t()) => Node.t()},
           edges: [Edge.t()],
           warnings: [String.t()],
@@ -49,6 +55,9 @@ defmodule JidoSkillGraph.Snapshot do
           | {:search_index, SearchIndex.t() | nil | keyword()}
           | {:ets_nodes, term() | nil}
           | {:ets_edges, term() | nil}
+          | {:ets_search_postings, term() | nil}
+          | {:ets_search_docs, term() | nil}
+          | {:ets_search_trigrams, term() | nil}
           | {:nodes, [Node.t()] | %{optional(String.t()) => Node.t()}}
           | {:edges, [Edge.t()]}
           | {:warnings, [String.t()]}
@@ -81,6 +90,9 @@ defmodule JidoSkillGraph.Snapshot do
          search_index: search_index,
          ets_nodes: Keyword.get(opts, :ets_nodes),
          ets_edges: Keyword.get(opts, :ets_edges),
+         ets_search_postings: Keyword.get(opts, :ets_search_postings),
+         ets_search_docs: Keyword.get(opts, :ets_search_docs),
+         ets_search_trigrams: Keyword.get(opts, :ets_search_trigrams),
          nodes: nodes,
          edges: edges,
          warnings: Keyword.get(opts, :warnings, []) ++ Enum.reverse(warnings),
@@ -240,6 +252,25 @@ defmodule JidoSkillGraph.Snapshot do
     %{snapshot | ets_nodes: ets_nodes, ets_edges: ets_edges}
   end
 
+  @spec attach_ets(t(), term(), term(), term(), term(), term()) :: t()
+  def attach_ets(
+        %__MODULE__{} = snapshot,
+        ets_nodes,
+        ets_edges,
+        ets_search_postings,
+        ets_search_docs,
+        ets_search_trigrams
+      ) do
+    %{
+      snapshot
+      | ets_nodes: ets_nodes,
+        ets_edges: ets_edges,
+        ets_search_postings: ets_search_postings,
+        ets_search_docs: ets_search_docs,
+        ets_search_trigrams: ets_search_trigrams
+    }
+  end
+
   @spec node_ids(t()) :: [String.t()]
   def node_ids(%__MODULE__{ets_nodes: ets_nodes} = snapshot) when not is_nil(ets_nodes) do
     case safe_ets_tab2list(ets_nodes) do
@@ -306,6 +337,95 @@ defmodule JidoSkillGraph.Snapshot do
 
   def in_edges(%__MODULE__{edges: edges}, node_id) when is_binary(node_id) do
     Enum.filter(edges, &(&1.to == node_id))
+  end
+
+  @spec search_postings(t(), String.t(), SearchIndex.field()) :: [{String.t(), non_neg_integer()}]
+  def search_postings(
+        %__MODULE__{ets_search_postings: ets_search_postings} = snapshot,
+        term,
+        field
+      )
+      when not is_nil(ets_search_postings) and is_binary(term) do
+    case safe_ets_lookup(ets_search_postings, {term, field}) do
+      [] ->
+        fallback_search_postings(snapshot, term, field)
+
+      rows ->
+        rows
+        |> Enum.map(fn {{^term, ^field}, node_id, tf} -> {node_id, tf} end)
+        |> Enum.sort_by(&elem(&1, 0))
+    end
+  end
+
+  def search_postings(%__MODULE__{} = snapshot, term, field) when is_binary(term) do
+    fallback_search_postings(snapshot, term, field)
+  end
+
+  @spec search_doc_stats(t(), String.t()) :: map() | nil
+  def search_doc_stats(%__MODULE__{ets_search_docs: ets_search_docs} = snapshot, node_id)
+      when not is_nil(ets_search_docs) and is_binary(node_id) do
+    case safe_ets_lookup(ets_search_docs, node_id) do
+      [{^node_id, stats}] -> stats
+      _ -> fallback_search_doc_stats(snapshot, node_id)
+    end
+  end
+
+  def search_doc_stats(%__MODULE__{} = snapshot, node_id) when is_binary(node_id) do
+    fallback_search_doc_stats(snapshot, node_id)
+  end
+
+  @spec search_corpus_stats(t()) :: map()
+  def search_corpus_stats(%__MODULE__{ets_search_docs: ets_search_docs} = snapshot)
+      when not is_nil(ets_search_docs) do
+    case safe_ets_lookup(ets_search_docs, :__meta__) do
+      [{:__meta__, stats}] when is_map(stats) ->
+        stats
+
+      _ ->
+        fallback_search_corpus_stats(snapshot)
+    end
+  end
+
+  def search_corpus_stats(%__MODULE__{} = snapshot), do: fallback_search_corpus_stats(snapshot)
+
+  defp fallback_search_postings(
+         %__MODULE__{search_index: %SearchIndex{} = search_index},
+         term,
+         field
+       ) do
+    search_index.meta
+    |> Map.get(:postings, %{})
+    |> Map.get({term, field}, [])
+    |> Enum.sort_by(&elem(&1, 0))
+  end
+
+  defp fallback_search_postings(_snapshot, _term, _field), do: []
+
+  defp fallback_search_doc_stats(
+         %__MODULE__{search_index: %SearchIndex{} = search_index},
+         node_id
+       ) do
+    search_index.meta
+    |> Map.get(:field_lengths_by_doc, %{})
+    |> Map.get(node_id)
+  end
+
+  defp fallback_search_doc_stats(_snapshot, _node_id), do: nil
+
+  defp fallback_search_corpus_stats(%__MODULE__{search_index: %SearchIndex{} = search_index}) do
+    %{
+      document_count: search_index.document_count,
+      avg_field_lengths: search_index.avg_field_lengths,
+      document_frequencies: Map.get(search_index.meta, :document_frequencies, %{})
+    }
+  end
+
+  defp fallback_search_corpus_stats(_snapshot) do
+    %{
+      document_count: 0,
+      avg_field_lengths: SearchIndex.default_avg_field_lengths(),
+      document_frequencies: %{}
+    }
   end
 
   defp safe_ets_lookup(table, key) do

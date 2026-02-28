@@ -47,6 +47,7 @@ Metadata (success):
 - `version` - committed snapshot version
 - `node_count` - number of nodes in committed snapshot
 - `edge_count` - number of edges in committed snapshot
+- `search_term_count` - number of indexed `{term, field}` posting keys
 
 Metadata (failure):
 
