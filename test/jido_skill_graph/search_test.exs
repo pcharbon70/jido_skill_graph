@@ -111,6 +111,50 @@ defmodule JidoSkillGraph.SearchTest do
              )
   end
 
+  test "indexed backend fuzzy mode recovers misspelled query terms" do
+    {store_name, _loader_name} = load_graph("basic", "basic")
+
+    assert {:ok, []} =
+             JidoSkillGraph.search("basic", "alpah",
+               store: store_name,
+               search_backend: Indexed
+             )
+
+    assert {:ok, fuzzy_results} =
+             JidoSkillGraph.search("basic", "alpah",
+               store: store_name,
+               search_backend: Indexed,
+               fuzzy: true
+             )
+
+    assert [%{id: "alpha"} | _] = fuzzy_results
+  end
+
+  test "indexed backend fuzzy mode supports AND queries with corrected terms" do
+    {store_name, _loader_name} = load_graph("basic", "basic")
+
+    assert {:ok, results} =
+             JidoSkillGraph.search("basic", "alpah references",
+               store: store_name,
+               search_backend: Indexed,
+               operator: :and,
+               fuzzy: true
+             )
+
+    assert Enum.map(results, & &1.id) == ["alpha"]
+  end
+
+  test "indexed backend validates fuzzy option values" do
+    {store_name, _loader_name} = load_graph("basic", "basic")
+
+    assert {:error, {:invalid_search_fuzzy, :maybe}} =
+             JidoSkillGraph.search("basic", "alpha",
+               store: store_name,
+               search_backend: Indexed,
+               fuzzy: :maybe
+             )
+  end
+
   test "search/3 allows pluggable backend" do
     {store_name, _loader_name} = load_graph("basic", "basic")
 

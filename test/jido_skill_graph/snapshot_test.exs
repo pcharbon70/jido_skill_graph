@@ -78,7 +78,7 @@ defmodule JidoSkillGraph.SnapshotTest do
     true = :ets.insert(ets_search_postings, [{{"alpha", :id}, "a", 1}])
     true = :ets.insert(ets_search_docs, [{"a", %{id: 1, title: 1, tags: 0, body: 2}}])
     true = :ets.insert(ets_search_docs, [{:__meta__, %{document_count: 2}}])
-    true = :ets.insert(ets_search_trigrams, [{:__meta__, %{enabled: false}}])
+    true = :ets.insert(ets_search_trigrams, [{:__meta__, %{enabled: true}}, {"alp", "alpha"}])
     true = :ets.insert(ets_search_bodies, [{"a", "alpha cached body"}])
 
     indexed =
@@ -101,6 +101,7 @@ defmodule JidoSkillGraph.SnapshotTest do
     assert Snapshot.search_doc_stats(indexed, "a") == %{id: 1, title: 1, tags: 0, body: 2}
     assert Snapshot.search_corpus_stats(indexed) == %{document_count: 2}
     assert Snapshot.search_body_cache(indexed, "a") == "alpha cached body"
+    assert Snapshot.search_trigram_terms(indexed, "alp") == ["alpha"]
   end
 
   test "search_body_cache/2 falls back to snapshot metadata when ETS cache is unavailable" do
@@ -125,6 +126,30 @@ defmodule JidoSkillGraph.SnapshotTest do
 
     assert Snapshot.search_body_cache(snapshot, "a") == "cached via metadata"
     assert Snapshot.search_body_cache(snapshot, "missing") == nil
+  end
+
+  test "search_trigram_terms/2 falls back to search index metadata when ETS cache is unavailable" do
+    node = Node.placeholder("graph", "a")
+
+    assert {:ok, search_index} =
+             SearchIndex.new(
+               build_version: 1,
+               document_count: 1,
+               avg_field_lengths: %{id: 1.0, title: 0.0, tags: 0.0, body: 2.0},
+               meta: %{document_frequencies: %{"alpha" => 1, "beta" => 1}}
+             )
+
+    assert {:ok, snapshot} =
+             Snapshot.new(
+               graph_id: "graph",
+               nodes: [node],
+               edges: [],
+               unresolved_link_policy: :warn_and_skip,
+               search_index: search_index
+             )
+
+    assert Snapshot.search_trigram_terms(snapshot, "alp") == ["alpha"]
+    assert Snapshot.search_trigram_terms(snapshot, "zzz") == []
   end
 
   test "new/1 accepts search index metadata" do

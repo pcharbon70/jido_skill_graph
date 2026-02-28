@@ -4,6 +4,7 @@ defmodule JidoSkillGraph.Snapshot do
   """
 
   alias JidoSkillGraph.{Edge, Node, SearchIndex}
+  alias JidoSkillGraph.SearchIndex.Trigram
 
   @type unresolved_link_policy :: :warn_and_skip | :error | :placeholder
 
@@ -413,6 +414,33 @@ defmodule JidoSkillGraph.Snapshot do
     fallback_search_body_cache(snapshot, node_id)
   end
 
+  @spec search_trigram_terms(t(), String.t()) :: [String.t()]
+  def search_trigram_terms(
+        %__MODULE__{ets_search_trigrams: ets_search_trigrams} = snapshot,
+        trigram
+      )
+      when not is_nil(ets_search_trigrams) and is_binary(trigram) do
+    normalized_trigram = String.downcase(trigram)
+
+    case safe_ets_lookup(ets_search_trigrams, normalized_trigram) do
+      [] ->
+        fallback_search_trigram_terms(snapshot, normalized_trigram)
+
+      rows ->
+        rows
+        |> Enum.flat_map(fn
+          {^normalized_trigram, term} when is_binary(term) -> [term]
+          _other -> []
+        end)
+        |> Enum.uniq()
+        |> Enum.sort()
+    end
+  end
+
+  def search_trigram_terms(%__MODULE__{} = snapshot, trigram) when is_binary(trigram) do
+    fallback_search_trigram_terms(snapshot, String.downcase(trigram))
+  end
+
   @spec search_corpus_stats(t()) :: map()
   def search_corpus_stats(%__MODULE__{ets_search_docs: ets_search_docs} = snapshot)
       when not is_nil(ets_search_docs) do
@@ -461,6 +489,28 @@ defmodule JidoSkillGraph.Snapshot do
   end
 
   defp fallback_search_body_cache(_snapshot, _node_id), do: nil
+
+  defp fallback_search_trigram_terms(
+         %__MODULE__{search_index: %SearchIndex{} = search_index},
+         trigram
+       ) do
+    downcased_trigram = String.downcase(trigram)
+
+    search_index.meta
+    |> Map.get(:document_frequencies, %{})
+    |> Map.keys()
+    |> Enum.filter(&is_binary/1)
+    |> Enum.map(&String.downcase/1)
+    |> Enum.filter(fn term ->
+      term
+      |> Trigram.term_trigrams()
+      |> Enum.member?(downcased_trigram)
+    end)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp fallback_search_trigram_terms(_snapshot, _trigram), do: []
 
   defp fallback_search_corpus_stats(%__MODULE__{search_index: %SearchIndex{} = search_index}) do
     %{

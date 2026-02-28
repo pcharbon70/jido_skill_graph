@@ -49,6 +49,8 @@ defmodule JidoSkillGraph.RuntimeTest do
     assert Snapshot.search_corpus_stats(committed).document_count == 2
     assert is_binary(Snapshot.search_body_cache(committed, "alpha"))
     assert Snapshot.search_body_cache(committed, "missing") == nil
+    assert "alpha" in Snapshot.search_trigram_terms(committed, "alp")
+    assert Snapshot.search_trigram_terms(committed, "zzz") == []
   end
 
   test "loader reload swaps snapshots and bumps runtime version" do
