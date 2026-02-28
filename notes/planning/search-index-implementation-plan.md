@@ -266,6 +266,33 @@ Acceptance criteria:
 - Existing override semantics remain backward compatible.
 - Search telemetry backend metadata reflects indexed default path.
 
+---
+
+### Phase 8: Search Telemetry and Runtime Config Polish
+
+Objective:
+Improve observability and operational guidance for indexed-default search.
+
+Changes:
+
+- Extend query search telemetry metadata with:
+  - `operator`
+  - `fuzzy`
+  - `fuzzy_max_expansions`
+  - `fuzzy_min_similarity`
+- Update telemetry documentation to include new metadata keys and indexed default.
+- Add runtime configuration/query examples demonstrating:
+  - indexed default
+  - explicit Basic fallback
+  - fuzzy option usage
+- Align benchmark defaults with indexed backend and keep Basic comparison path.
+
+Acceptance criteria:
+
+- Search telemetry emits option metadata for both defaulted and custom requests.
+- Telemetry contract docs reflect emitted metadata shape.
+- README includes practical runtime examples for current default behavior.
+
 ## 6. Testing Plan by Layer
 
 Unit tests:

@@ -90,6 +90,11 @@ Metadata:
 
 - `status` - `:ok` or `:error`
 - `graph_id` - requested graph id
-- `backend` - configured backend module (inspected)
+- `backend` - configured backend module (inspected). Defaults to
+  `JidoSkillGraph.SearchBackend.Indexed` when not explicitly provided.
 - `fields` - requested fields option or `:default`
 - `limit` - requested limit option (defaults to `20`)
+- `operator` - requested operator option (`:or` by default)
+- `fuzzy` - requested fuzzy toggle (`false` by default)
+- `fuzzy_max_expansions` - requested fuzzy candidate cap (`3` by default)
+- `fuzzy_min_similarity` - requested trigram similarity threshold (`0.2` by default)

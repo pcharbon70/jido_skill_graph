@@ -6,6 +6,12 @@ defmodule JidoSkillGraph.Query do
   alias JidoSkillGraph.{Edge, SearchBackend, SkillFile, Snapshot, Telemetry}
   alias JidoSkillGraph.SearchBackend.Indexed, as: IndexedSearch
 
+  @search_default_limit 20
+  @search_default_operator :or
+  @search_default_fuzzy false
+  @search_default_fuzzy_max_expansions 3
+  @search_default_fuzzy_min_similarity 0.2
+
   @type query_error ::
           :graph_not_loaded
           | {:unknown_graph, String.t()}
@@ -298,7 +304,13 @@ defmodule JidoSkillGraph.Query do
       graph_id: graph_id,
       backend: inspect(backend),
       fields: Keyword.get(opts, :fields, :default),
-      limit: Keyword.get(opts, :limit, 20)
+      limit: Keyword.get(opts, :limit, @search_default_limit),
+      operator: Keyword.get(opts, :operator, @search_default_operator),
+      fuzzy: Keyword.get(opts, :fuzzy, @search_default_fuzzy),
+      fuzzy_max_expansions:
+        Keyword.get(opts, :fuzzy_max_expansions, @search_default_fuzzy_max_expansions),
+      fuzzy_min_similarity:
+        Keyword.get(opts, :fuzzy_min_similarity, @search_default_fuzzy_min_similarity)
     }
 
     Telemetry.execute([:query, :search], measurements, metadata)
