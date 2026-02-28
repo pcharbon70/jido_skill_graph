@@ -18,6 +18,9 @@ defmodule JidoSkillGraph.BuilderTest do
     assert %JidoSkillGraph.SearchIndex{} = snapshot.search_index
     assert snapshot.search_index.document_count == 2
     assert snapshot.search_index.avg_field_lengths.body > 0
+    assert map_size(snapshot.search_index.meta.postings) > 0
+    assert map_size(snapshot.search_index.meta.document_frequencies) > 0
+    assert Map.has_key?(snapshot.search_index.meta.field_lengths_by_doc, "alpha")
 
     assert Enum.any?(snapshot.edges, fn edge ->
              edge.from == "alpha" and edge.to == "beta" and edge.rel == :prereq

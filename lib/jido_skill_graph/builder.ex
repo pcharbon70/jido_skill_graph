@@ -41,7 +41,7 @@ defmodule JidoSkillGraph.Builder do
   def build(opts \\ []) do
     with {:ok, discovery} <- discover(opts),
          {:ok, graph_id} <- resolve_graph_id(opts, discovery),
-         {:ok, nodes, link_specs, field_lengths} <-
+         {:ok, nodes, link_specs, field_lengths, postings, document_frequencies} <-
            parse_nodes(
              discovery.files,
              discovery.root,
@@ -50,29 +50,34 @@ defmodule JidoSkillGraph.Builder do
            ),
          {:ok, edges, warnings} <- resolve_links(nodes, link_specs),
          do:
-           build_snapshot(
-             opts,
-             discovery,
-             graph_id,
-             nodes,
-             edges,
-             warnings,
-             link_specs,
-             field_lengths
-           )
+           build_snapshot(%{
+             opts: opts,
+             discovery: discovery,
+             graph_id: graph_id,
+             nodes: nodes,
+             edges: edges,
+             warnings: warnings,
+             link_specs: link_specs,
+             field_lengths: field_lengths,
+             postings: postings,
+             document_frequencies: document_frequencies
+           })
   end
 
-  defp build_snapshot(
-         opts,
-         discovery,
-         graph_id,
-         nodes,
-         edges,
-         warnings,
-         link_specs,
-         field_lengths
-       ) do
-    with {:ok, search_index} <- build_search_index(field_lengths, opts),
+  defp build_snapshot(%{
+         opts: opts,
+         discovery: discovery,
+         graph_id: graph_id,
+         nodes: nodes,
+         edges: edges,
+         warnings: warnings,
+         link_specs: link_specs,
+         field_lengths: field_lengths,
+         postings: postings,
+         document_frequencies: document_frequencies
+       }) do
+    with {:ok, search_index} <-
+           build_search_index(field_lengths, postings, document_frequencies, opts),
          {:ok, snapshot} <-
            Snapshot.new(
              graph: nil,
@@ -181,20 +186,26 @@ defmodule JidoSkillGraph.Builder do
 
   defp parse_nodes(files, root, graph_id, tokenizer_opts) do
     files
-    |> Enum.reduce_while({:ok, [], [], %{}}, fn path, {:ok, nodes, link_specs, field_lengths} ->
-      case parse_node(path, root, graph_id, tokenizer_opts) do
-        {:ok, node, links, node_field_lengths} ->
-          {:cont,
-           {:ok, [node | nodes], links ++ link_specs,
-            Map.put(field_lengths, node.id, node_field_lengths)}}
+    |> Enum.reduce_while(
+      {:ok, [], [], %{}, %{}, %{}},
+      fn path, {:ok, nodes, link_specs, field_lengths, postings, document_frequencies} ->
+        case parse_node(path, root, graph_id, tokenizer_opts) do
+          {:ok, node, links, node_field_lengths, node_postings, node_terms} ->
+            {:cont,
+             {:ok, [node | nodes], links ++ link_specs,
+              Map.put(field_lengths, node.id, node_field_lengths),
+              merge_postings(postings, node.id, node_postings),
+              merge_document_frequencies(document_frequencies, node_terms)}}
 
-        {:error, reason} ->
-          {:halt, {:error, reason}}
+          {:error, reason} ->
+            {:halt, {:error, reason}}
+        end
       end
-    end)
+    )
     |> case do
-      {:ok, nodes, link_specs, field_lengths} ->
-        {:ok, Enum.reverse(nodes), Enum.reverse(link_specs), field_lengths}
+      {:ok, nodes, link_specs, field_lengths, postings, document_frequencies} ->
+        {:ok, Enum.reverse(nodes), Enum.reverse(link_specs), field_lengths, postings,
+         document_frequencies}
 
       error ->
         error
@@ -205,8 +216,11 @@ defmodule JidoSkillGraph.Builder do
     with {:ok, %SkillFile{} = document} <- SkillFile.parse(path),
          {:ok, node} <- build_node(document, root, graph_id),
          {:ok, links} <- LinkExtractor.extract(document.body, frontmatter: document.frontmatter) do
-      {:ok, node, annotate_links(node.id, path, links),
-       node_field_lengths(node, document, tokenizer_opts)}
+      {node_field_lengths, node_postings, node_terms} =
+        node_search_index_data(node, document, tokenizer_opts)
+
+      {:ok, node, annotate_links(node.id, path, links), node_field_lengths, node_postings,
+       node_terms}
     end
   end
 
@@ -235,29 +249,66 @@ defmodule JidoSkillGraph.Builder do
 
   defp normalize_tags(_tags), do: []
 
-  defp node_field_lengths(node, document, tokenizer_opts) do
-    %{
-      id: token_count(node.id, tokenizer_opts),
-      title: token_count(node.title || "", tokenizer_opts),
-      tags: token_count(Enum.join(node.tags, " "), tokenizer_opts),
-      body: token_count(document.body, tokenizer_opts)
+  defp node_search_index_data(node, document, tokenizer_opts) do
+    token_frequencies = %{
+      id: Tokenizer.token_frequencies(node.id, tokenizer_opts),
+      title: Tokenizer.token_frequencies(node.title || "", tokenizer_opts),
+      tags: Tokenizer.token_frequencies(Enum.join(node.tags, " "), tokenizer_opts),
+      body: Tokenizer.token_frequencies(document.body, tokenizer_opts)
     }
+
+    field_lengths =
+      token_frequencies
+      |> Enum.into(%{}, fn {field, frequencies} ->
+        {field, Enum.reduce(frequencies, 0, fn {_term, tf}, acc -> acc + tf end)}
+      end)
+
+    postings =
+      token_frequencies
+      |> Enum.reduce(%{}, fn {field, frequencies}, acc ->
+        Enum.reduce(frequencies, acc, fn {term, tf}, inner_acc ->
+          Map.put(inner_acc, {term, field}, tf)
+        end)
+      end)
+
+    unique_terms =
+      token_frequencies
+      |> Map.values()
+      |> Enum.flat_map(&Map.keys/1)
+      |> MapSet.new()
+
+    {field_lengths, postings, unique_terms}
   end
 
-  defp token_count(text, tokenizer_opts) when is_binary(text) do
-    text
-    |> Tokenizer.tokenize(tokenizer_opts)
-    |> length()
+  defp merge_postings(acc, node_id, node_postings) do
+    Enum.reduce(node_postings, acc, fn {{term, field}, tf}, posting_acc ->
+      Map.update(posting_acc, {term, field}, [{node_id, tf}], fn rows ->
+        [{node_id, tf} | rows]
+      end)
+    end)
   end
 
-  defp token_count(_text, _tokenizer_opts), do: 0
+  defp merge_document_frequencies(acc, unique_terms) do
+    Enum.reduce(unique_terms, acc, fn term, frequencies_acc ->
+      Map.update(frequencies_acc, term, 1, &(&1 + 1))
+    end)
+  end
 
-  defp build_search_index(field_lengths, opts) do
+  defp build_search_index(field_lengths, postings, document_frequencies, opts) do
+    postings =
+      postings
+      |> Enum.into(%{}, fn {key, rows} ->
+        {key, Enum.sort_by(rows, &elem(&1, 0))}
+      end)
+
     SearchIndex.from_field_lengths(
       field_lengths,
       build_version: Keyword.get(opts, :search_index_build_version, 1),
       meta: %{
-        tokenizer: Keyword.get(opts, :search_index_tokenizer_opts, [])
+        tokenizer: Keyword.get(opts, :search_index_tokenizer_opts, []),
+        field_lengths_by_doc: field_lengths,
+        postings: postings,
+        document_frequencies: document_frequencies
       }
     )
   end
