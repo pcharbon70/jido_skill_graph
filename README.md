@@ -36,13 +36,19 @@ mix dialyzer
 Run a local search benchmark (indexed default):
 
 ```sh
-mix run scripts/search_benchmark.exs -- --iterations 100
+mix run scripts/search_benchmark.exs --iterations 100
 ```
 
-Compare against the legacy basic backend:
+Compare indexed vs basic in one run (includes p50/p95 speedup output):
 
 ```sh
-mix run scripts/search_benchmark.exs -- --backend basic --iterations 100
+mix run scripts/search_benchmark.exs --backend both --iterations 200 --warmup-iterations 20
+```
+
+Run only the legacy basic backend:
+
+```sh
+mix run scripts/search_benchmark.exs --backend basic --iterations 100
 ```
 
 ## Local Development Configuration Example

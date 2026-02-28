@@ -293,6 +293,29 @@ Acceptance criteria:
 - Telemetry contract docs reflect emitted metadata shape.
 - README includes practical runtime examples for current default behavior.
 
+---
+
+### Phase 9: Backend Comparison Benchmark Harness
+
+Objective:
+Make performance validation repeatable for indexed vs basic search behavior.
+
+Changes:
+
+- Extend `scripts/search_benchmark.exs` with backend comparison mode:
+  - `--backend both` runs indexed and basic in one execution.
+  - per-query and overall summaries include `avg/p50/p95/min/max`.
+  - comparison output reports basic/indexed p50 and p95 speedup ratios.
+- Add warmup control for more stable timing:
+  - `--warmup-iterations` (default `10`).
+- Update README benchmark examples to include the comparison workflow.
+
+Acceptance criteria:
+
+- Benchmark script can run indexed-only, basic-only, and indexed-vs-basic modes.
+- Output includes deterministic summary fields for each query and an overall aggregate.
+- Comparison mode prints explicit speedup ratios for p50 and p95 latency.
+
 ## 6. Testing Plan by Layer
 
 Unit tests:
