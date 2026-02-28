@@ -3,45 +3,69 @@ Mix.Task.run("app.start")
 defmodule SearchBenchmark do
   @moduledoc false
 
+  alias JidoSkillGraph.Snapshot
+
   @default_queries ["alpha", "core", "references", "beta", "a"]
   @default_backend_mode :indexed
+  @default_profile_mode :fixture
   @default_iterations 100
   @default_warmup_iterations 10
   @default_limit 20
+  @profile_shapes %{
+    small: %{nodes: 32, body_repetitions: 8},
+    medium: %{nodes: 256, body_repetitions: 12},
+    large: %{nodes: 1_024, body_repetitions: 16}
+  }
 
   def run(args) do
     opts = parse_args(args)
 
-    {:ok, _pid} =
-      JidoSkillGraph.start_link(
-        name: opts.graph_name,
-        store: [name: opts.store_name],
-        loader: [
-          name: opts.loader_name,
-          load_on_start: false,
-          builder_opts: [root: opts.root, graph_id: opts.graph_id]
-        ]
-      )
+    with_prepared_root(opts, fn prepared_opts ->
+      {:ok, _pid} =
+        JidoSkillGraph.start_link(
+          name: prepared_opts.graph_name,
+          store: [name: prepared_opts.store_name],
+          loader: [
+            name: prepared_opts.loader_name,
+            load_on_start: false,
+            builder_opts: [root: prepared_opts.root, graph_id: prepared_opts.graph_id]
+          ]
+        )
 
-    :ok = JidoSkillGraph.reload(opts.loader_name)
+      memory_before = :erlang.memory(:total)
 
-    backend_plan = backend_plan(opts.backend_mode)
+      {reload_micros, reload_result} =
+        :timer.tc(fn ->
+          JidoSkillGraph.reload(prepared_opts.loader_name)
+        end)
 
-    IO.puts("Benchmarking graph_id=#{opts.graph_id} root=#{opts.root}")
-    IO.puts("backends=#{backend_labels(backend_plan)}")
+      case reload_result do
+        :ok ->
+          :ok
 
-    IO.puts(
-      "queries=#{Enum.join(opts.queries, ", ")} iterations=#{opts.iterations} warmup=#{opts.warmup_iterations}"
-    )
+        {:error, reason} ->
+          raise "search benchmark reload failed: #{inspect(reason)}"
 
-    results =
-      backend_plan
-      |> Enum.map(fn {backend_key, backend_module} ->
-        {backend_key, benchmark_backend(opts, backend_module)}
-      end)
-      |> Map.new()
+        other ->
+          raise "search benchmark reload returned unexpected response: #{inspect(other)}"
+      end
 
-    print_results(opts, results)
+      snapshot = JidoSkillGraph.current_snapshot(prepared_opts.store_name)
+      memory_after = :erlang.memory(:total)
+      corpus_stats = summarize_corpus(snapshot, memory_before, memory_after, reload_micros)
+      backend_plan = backend_plan(prepared_opts.backend_mode)
+
+      print_run_header(prepared_opts, backend_plan, corpus_stats)
+
+      results =
+        backend_plan
+        |> Enum.map(fn {backend_key, backend_module} ->
+          {backend_key, benchmark_backend(prepared_opts, backend_module)}
+        end)
+        |> Map.new()
+
+      print_results(prepared_opts, results)
+    end)
   end
 
   defp parse_args(args) do
@@ -53,6 +77,7 @@ defmodule SearchBenchmark do
           root: :string,
           graph_id: :string,
           backend: :string,
+          profile: :string,
           queries: :string,
           iterations: :integer,
           warmup_iterations: :integer,
@@ -63,6 +88,7 @@ defmodule SearchBenchmark do
     root = parsed |> Keyword.get(:root, "test/fixtures/phase4/basic") |> Path.expand()
     graph_id = Keyword.get(parsed, :graph_id, "benchmark")
     backend_mode = parsed |> Keyword.get(:backend, "indexed") |> normalize_backend_mode()
+    profile_mode = parsed |> Keyword.get(:profile, "fixture") |> normalize_profile_mode()
     iterations = max(1, Keyword.get(parsed, :iterations, @default_iterations))
 
     warmup_iterations =
@@ -81,6 +107,7 @@ defmodule SearchBenchmark do
       root: root,
       graph_id: graph_id,
       backend_mode: backend_mode,
+      profile_mode: profile_mode,
       queries: queries,
       iterations: iterations,
       warmup_iterations: warmup_iterations,
@@ -110,6 +137,95 @@ defmodule SearchBenchmark do
     @default_backend_mode
   end
 
+  defp normalize_profile_mode(value) when is_binary(value) do
+    case value |> String.trim() |> String.downcase() do
+      "fixture" -> :fixture
+      "small" -> :small
+      "medium" -> :medium
+      "large" -> :large
+      other -> unknown_profile_mode(other)
+    end
+  end
+
+  defp normalize_profile_mode(_value), do: @default_profile_mode
+
+  defp unknown_profile_mode(other) do
+    IO.warn("unknown profile '#{other}', falling back to #{@default_profile_mode}")
+    @default_profile_mode
+  end
+
+  defp with_prepared_root(%{profile_mode: :fixture} = opts, callback)
+       when is_function(callback, 1) do
+    callback.(opts)
+  end
+
+  defp with_prepared_root(opts, callback) when is_function(callback, 1) do
+    shape = Map.fetch!(@profile_shapes, opts.profile_mode)
+    generated_root = generated_root(opts.profile_mode)
+
+    generate_synthetic_corpus(generated_root, shape.nodes, shape.body_repetitions)
+
+    prepared_opts = %{
+      opts
+      | root: generated_root,
+        graph_id: "#{opts.graph_id}-#{opts.profile_mode}"
+    }
+
+    try do
+      callback.(prepared_opts)
+    after
+      _ = File.rm_rf(generated_root)
+    end
+  end
+
+  defp generated_root(profile_mode) do
+    Path.join(
+      System.tmp_dir!(),
+      "jsg_benchmark_#{profile_mode}_#{System.unique_integer([:positive])}"
+    )
+  end
+
+  defp generate_synthetic_corpus(root, node_count, body_repetitions) do
+    _ = File.rm_rf(root)
+    :ok = File.mkdir_p(root)
+
+    Enum.each(1..node_count, fn index ->
+      node_id = synthetic_node_id(index)
+      next_node_id = synthetic_node_id(rem(index, node_count) + 1)
+      prev_node_id = synthetic_node_id(if(index == 1, do: node_count, else: index - 1))
+      node_dir = Path.join(root, node_id)
+
+      :ok = File.mkdir_p(node_dir)
+
+      body =
+        Enum.map_join(1..body_repetitions, " ", fn repetition ->
+          token = rem(index + repetition, 64)
+          "alpha core references beta benchmark token#{token}"
+        end)
+
+      contents = """
+      ---
+      slug: #{node_id}
+      title: Benchmark #{index}
+      tags:
+        - benchmark
+        - synthetic
+      links:
+        - target: #{next_node_id}
+          rel: related
+        - target: #{prev_node_id}
+          rel: prereq
+      ---
+      #{body} [[#{next_node_id}]] [[related:#{prev_node_id}]]
+      """
+
+      :ok = File.write(Path.join(node_dir, "SKILL.md"), contents)
+    end)
+  end
+
+  defp synthetic_node_id(index),
+    do: "node-#{index |> Integer.to_string() |> String.pad_leading(4, "0")}"
+
   defp backend_plan(:indexed), do: [indexed: backend_module(:indexed)]
   defp backend_plan(:basic), do: [basic: backend_module(:basic)]
   defp backend_plan(:both), do: [indexed: backend_module(:indexed), basic: backend_module(:basic)]
@@ -120,6 +236,60 @@ defmodule SearchBenchmark do
   defp backend_labels(plan) do
     plan
     |> Enum.map_join(",", fn {backend_key, _backend_module} -> Atom.to_string(backend_key) end)
+  end
+
+  defp print_run_header(opts, backend_plan, corpus_stats) do
+    IO.puts(
+      "Benchmarking graph_id=#{opts.graph_id} root=#{opts.root} profile=#{opts.profile_mode}"
+    )
+
+    IO.puts("backends=#{backend_labels(backend_plan)}")
+
+    IO.puts(
+      "queries=#{Enum.join(opts.queries, ", ")} iterations=#{opts.iterations} warmup=#{opts.warmup_iterations}"
+    )
+
+    IO.puts(
+      "corpus nodes=#{corpus_stats.node_count} edges=#{corpus_stats.edge_count} docs=#{corpus_stats.document_count} terms=#{corpus_stats.term_count} posting_keys=#{corpus_stats.posting_key_count} body_cache_nodes=#{corpus_stats.body_cache_nodes}"
+    )
+
+    IO.puts(
+      "reload_ms=#{round_ms(corpus_stats.reload_ms)} memory_before_mb=#{round_mb(corpus_stats.memory_before_bytes)} memory_after_mb=#{round_mb(corpus_stats.memory_after_bytes)} memory_delta_mb=#{round_mb(corpus_stats.memory_delta_bytes)}"
+    )
+  end
+
+  defp summarize_corpus(nil, memory_before, memory_after, reload_micros) do
+    %{
+      node_count: 0,
+      edge_count: 0,
+      document_count: 0,
+      term_count: 0,
+      posting_key_count: 0,
+      body_cache_nodes: 0,
+      memory_before_bytes: memory_before,
+      memory_after_bytes: memory_after,
+      memory_delta_bytes: memory_after - memory_before,
+      reload_ms: reload_micros / 1_000
+    }
+  end
+
+  defp summarize_corpus(snapshot, memory_before, memory_after, reload_micros) do
+    search_index = snapshot.search_index
+    search_meta = if search_index, do: search_index.meta, else: %{}
+    body_cache_meta = if search_index, do: search_index.body_cache_meta, else: %{}
+
+    %{
+      node_count: Snapshot.node_ids(snapshot) |> length(),
+      edge_count: Snapshot.edges(snapshot) |> length(),
+      document_count: if(search_index, do: search_index.document_count, else: 0),
+      term_count: Map.get(search_meta, :document_frequencies, %{}) |> map_size(),
+      posting_key_count: Map.get(search_meta, :postings, %{}) |> map_size(),
+      body_cache_nodes: Map.get(body_cache_meta, :cached_nodes, 0),
+      memory_before_bytes: memory_before,
+      memory_after_bytes: memory_after,
+      memory_delta_bytes: memory_after - memory_before,
+      reload_ms: reload_micros / 1_000
+    }
   end
 
   defp benchmark_backend(opts, backend_module) do
@@ -245,6 +415,7 @@ defmodule SearchBenchmark do
   defp speedup_ratio(_numerator_ms, _denominator_ms), do: "n/a"
 
   defp round_ms(value), do: Float.round(value, 3)
+  defp round_mb(value), do: (value / 1_048_576) |> Float.round(3)
 
   defp percentile(samples, p) when is_list(samples) and samples != [] and is_integer(p) do
     sorted = Enum.sort(samples)

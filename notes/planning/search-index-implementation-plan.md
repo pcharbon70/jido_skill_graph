@@ -316,6 +316,36 @@ Acceptance criteria:
 - Output includes deterministic summary fields for each query and an overall aggregate.
 - Comparison mode prints explicit speedup ratios for p50 and p95 latency.
 
+---
+
+### Phase 10: Corpus-Scale Benchmark Profiles and Memory Tracking
+
+Objective:
+Cover small/medium/large corpus performance scenarios and report memory growth.
+
+Changes:
+
+- Extend benchmark script with corpus profiles:
+  - `--profile fixture` (existing fixture corpus)
+  - `--profile small` (32 synthetic nodes)
+  - `--profile medium` (256 synthetic nodes)
+  - `--profile large` (1024 synthetic nodes)
+- For synthetic profiles, generate temporary benchmark corpora automatically and
+  clean them up after execution.
+- Emit corpus/load metrics before query benchmarking:
+  - node/edge/doc counts
+  - term and posting key counts
+  - cached body count
+  - reload latency
+  - memory before/after and delta
+- Update README benchmark workflows with profile commands.
+
+Acceptance criteria:
+
+- Script can run profile benchmarks without manual fixture preparation.
+- Output includes corpus-level memory and reload metrics.
+- Small/medium/large profile commands are documented for repeatable perf checks.
+
 ## 6. Testing Plan by Layer
 
 Unit tests:

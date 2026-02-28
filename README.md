@@ -51,6 +51,14 @@ Run only the legacy basic backend:
 mix run scripts/search_benchmark.exs --backend basic --iterations 100
 ```
 
+Run synthetic corpus profiles to validate scaling and memory deltas:
+
+```sh
+mix run scripts/search_benchmark.exs --profile small --backend both --iterations 100
+mix run scripts/search_benchmark.exs --profile medium --backend both --iterations 50
+mix run scripts/search_benchmark.exs --profile large --backend both --iterations 20
+```
+
 ## Local Development Configuration Example
 
 Supervised runtime with explicit store/loader names:
