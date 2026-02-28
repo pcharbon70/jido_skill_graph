@@ -479,6 +479,34 @@ Acceptance criteria:
 - Invalid/missing config file fails fast with a clear error.
 - CI workflow no longer hard-codes threshold values in command flags.
 
+---
+
+### Phase 16: Strict Guardrail Config Validation
+
+Objective:
+Prevent silent guardrail misconfiguration by validating config-file values before
+benchmark execution.
+
+Changes:
+
+- Extend `JidoSkillGraph.BenchmarkGuardrails.Config` validation rules:
+  - `min_speedup_p50` and `min_speedup_p95` must be numeric and `> 0`
+  - `max_memory_delta_mb` must be numeric and `>= 0`
+  - `enforce_profiles` must be an array of known profile names
+- Normalize `enforce_profiles` entries to lowercase and deduplicate while
+  preserving order.
+- Return explicit `{:invalid_value, key, reason}` loader errors on invalid
+  values.
+- Add focused unit tests for invalid threshold ranges, invalid profile types,
+  unknown profile names, and normalization behavior.
+- Update README to clarify strict validation behavior.
+
+Acceptance criteria:
+
+- Invalid config values fail before benchmark execution begins.
+- Error payload identifies the invalid key and reason.
+- Config loader tests cover normalization and invalid-value paths.
+
 ## 6. Testing Plan by Layer
 
 Unit tests:

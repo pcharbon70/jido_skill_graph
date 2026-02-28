@@ -77,6 +77,9 @@ Or load guardrail thresholds from a tracked JSON config:
 mix run scripts/search_benchmark.exs --profile all --backend both --iterations 10 --warmup-iterations 2 --guardrail-config scripts/search_benchmark_guardrails.ci.json --output tmp/search_benchmark_guardrail.json
 ```
 
+Guardrail config parsing is strict: invalid threshold ranges or profile names
+fail fast with a runtime error.
+
 The repository also includes an automated benchmark guardrail workflow:
 
 - workflow: `.github/workflows/benchmark-guardrails.yml`
