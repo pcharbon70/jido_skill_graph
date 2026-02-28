@@ -1,0 +1,107 @@
+name: Benchmark Guardrails
+
+on:
+  pull_request:
+    paths:
+      - "lib/**"
+      - "scripts/search_benchmark.exs"
+      - "test/fixtures/phase4/basic/**"
+      - "mix.exs"
+      - "mix.lock"
+      - ".github/workflows/benchmark-guardrails.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "lib/**"
+      - "scripts/search_benchmark.exs"
+      - "test/fixtures/phase4/basic/**"
+      - "mix.exs"
+      - "mix.lock"
+      - ".github/workflows/benchmark-guardrails.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    name: Benchmark Guardrails
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Erlang/Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+
+      - name: Restore deps cache
+        uses: actions/cache@v4
+        with:
+          path: deps
+          key: ${{ runner.os }}-mix-deps-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-deps-
+
+      - name: Restore build cache
+        uses: actions/cache@v4
+        with:
+          path: _build
+          key: ${{ runner.os }}-mix-build-${{ hashFiles('mix.lock') }}-${{ hashFiles('lib/**/*.ex', 'lib/**/*.exs', 'mix.exs') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-build-${{ hashFiles('mix.lock') }}-
+            ${{ runner.os }}-mix-build-
+
+      - name: Install dependencies
+        run: mix deps.get
+
+      - name: Compile
+        run: mix compile --warnings-as-errors
+
+      - name: Run benchmark guardrails
+        run: >-
+          mix run scripts/search_benchmark.exs
+          --profile all
+          --backend both
+          --queries alpha,core,references
+          --iterations 5
+          --warmup-iterations 2
+          --enforce-profiles small,medium,large
+          --min-speedup-p50 3.0
+          --min-speedup-p95 2.5
+          --max-memory-delta-mb 120
+          --output tmp/search_benchmark_ci_report.json
+
+      - name: Add benchmark summary
+        if: always()
+        run: |
+          if [ ! -f tmp/search_benchmark_ci_report.json ]; then
+            echo "Benchmark report not generated" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          status="$(jq -r '.guardrails.status' tmp/search_benchmark_ci_report.json)"
+
+          {
+            echo "## Benchmark Guardrails"
+            echo ""
+            echo "- status: ${status}"
+            echo "- profile: all (enforced: small,medium,large)"
+            echo "- thresholds: p50>=3.0x p95>=2.5x memory<=120MB"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          jq -r '.guardrails.failures[]?' tmp/search_benchmark_ci_report.json | while read -r failure; do
+            echo "- failure: ${failure}" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Upload benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-benchmark-report
+          path: tmp/search_benchmark_ci_report.json
+          if-no-files-found: warn

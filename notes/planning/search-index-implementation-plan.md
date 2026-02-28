@@ -400,6 +400,30 @@ Acceptance criteria:
 - Failures identify profile + metric + observed value + expected threshold.
 - Exported report captures guardrail status for downstream automation.
 
+---
+
+### Phase 13: CI Benchmark Guardrail Automation
+
+Objective:
+Run benchmark guardrails automatically in CI and publish machine-readable reports.
+
+Changes:
+
+- Add `.github/workflows/benchmark-guardrails.yml` to execute benchmark checks on:
+  - pull requests
+  - pushes to `main`
+  - manual workflow dispatch
+- Run `scripts/search_benchmark.exs` with fixed CI thresholds and enforced profiles.
+- Upload JSON report as a workflow artifact for audit/trend analysis.
+- Add workflow summary output for guardrail status and failure diagnostics.
+- Document the workflow in README so local and CI guardrails stay aligned.
+
+Acceptance criteria:
+
+- CI job fails when benchmark guardrails fail.
+- Workflow always uploads benchmark JSON report artifact.
+- Step summary includes guardrail status and any profile-level failures.
+
 ## 6. Testing Plan by Layer
 
 Unit tests:
