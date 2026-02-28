@@ -42,7 +42,10 @@ defmodule SearchBenchmark do
 
       avg_ms = micros |> Enum.sum() |> Kernel./(length(micros)) |> Kernel./(1_000)
       p95_ms = percentile(micros, 95) / 1_000
-      IO.puts("query=#{inspect(query)} avg_ms=#{Float.round(avg_ms, 3)} p95_ms=#{Float.round(p95_ms, 3)}")
+
+      IO.puts(
+        "query=#{inspect(query)} avg_ms=#{Float.round(avg_ms, 3)} p95_ms=#{Float.round(p95_ms, 3)}"
+      )
     end)
   end
 
@@ -61,7 +64,7 @@ defmodule SearchBenchmark do
 
     root = parsed |> Keyword.get(:root, "test/fixtures/phase4/basic") |> Path.expand()
     graph_id = Keyword.get(parsed, :graph_id, "benchmark")
-    backend = Keyword.get(parsed, :backend, "basic")
+    backend = Keyword.get(parsed, :backend, "indexed")
     iterations = max(1, Keyword.get(parsed, :iterations, 100))
     limit = max(1, Keyword.get(parsed, :limit, 20))
 

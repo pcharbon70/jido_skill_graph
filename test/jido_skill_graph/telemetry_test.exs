@@ -115,6 +115,10 @@ defmodule JidoSkillGraph.TelemetryTest do
                       graph_id: ^graph_id,
                       fields: [:title],
                       limit: 5,
+                      operator: :or,
+                      fuzzy: false,
+                      fuzzy_max_expansions: 3,
+                      fuzzy_min_similarity: 0.2,
                       backend: backend
                     }}
 
@@ -135,6 +139,10 @@ defmodule JidoSkillGraph.TelemetryTest do
                       status: :error,
                       graph_id: ^graph_id,
                       limit: 20,
+                      operator: :or,
+                      fuzzy: false,
+                      fuzzy_max_expansions: 3,
+                      fuzzy_min_similarity: 0.2,
                       backend: backend
                     }}
 
@@ -143,6 +151,40 @@ defmodule JidoSkillGraph.TelemetryTest do
     assert fail_measurements.result_count == 0
     assert fail_measurements.query_bytes == byte_size("Alpha")
     assert String.contains?(backend, ":not_a_module")
+  end
+
+  test "query search telemetry includes custom indexed options" do
+    _handler_id = attach_handler([[:jido_skill_graph, :query, :search]])
+    graph_id = "telemetry-search-fuzzy-#{System.unique_integer([:positive])}"
+
+    {store_name, _loader_name} = load_graph("basic", graph_id)
+
+    assert {:ok, results} =
+             JidoSkillGraph.search(graph_id, "alpah references",
+               store: store_name,
+               operator: :and,
+               fuzzy: true,
+               fuzzy_max_expansions: 4,
+               fuzzy_min_similarity: 0.15
+             )
+
+    assert [%{id: "alpha"} | _] = results
+
+    assert_receive {:telemetry_event, [:jido_skill_graph, :query, :search], measurements,
+                    %{
+                      status: :ok,
+                      graph_id: ^graph_id,
+                      operator: :and,
+                      fuzzy: true,
+                      fuzzy_max_expansions: 4,
+                      fuzzy_min_similarity: 0.15,
+                      backend: backend
+                    }}
+
+    assert measurements.count == 1
+    assert measurements.duration_ms >= 0
+    assert measurements.result_count > 0
+    assert String.contains?(backend, "JidoSkillGraph.SearchBackend.Indexed")
   end
 
   def handle_telemetry(event, measurements, metadata, %{test_pid: test_pid}) do

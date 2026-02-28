@@ -33,7 +33,13 @@ mix credo --strict
 mix dialyzer
 ```
 
-Run a local search baseline benchmark:
+Run a local search benchmark (indexed default):
+
+```sh
+mix run scripts/search_benchmark.exs -- --iterations 100
+```
+
+Compare against the legacy basic backend:
 
 ```sh
 mix run scripts/search_benchmark.exs -- --backend basic --iterations 100
@@ -58,4 +64,33 @@ children = [
    ],
    watch?: false}
 ]
+```
+
+## Search Runtime Examples
+
+Default search uses the indexed backend:
+
+```elixir
+JidoSkillGraph.search("local-dev", "alpha references", store: MyApp.SkillGraph.Store)
+```
+
+Force legacy substring behavior explicitly:
+
+```elixir
+JidoSkillGraph.search("local-dev", "alpha references",
+  store: MyApp.SkillGraph.Store,
+  search_backend: JidoSkillGraph.SearchBackend.Basic
+)
+```
+
+Enable typo tolerance in indexed mode:
+
+```elixir
+JidoSkillGraph.search("local-dev", "alpah references",
+  store: MyApp.SkillGraph.Store,
+  operator: :and,
+  fuzzy: true,
+  fuzzy_max_expansions: 4,
+  fuzzy_min_similarity: 0.2
+)
 ```
