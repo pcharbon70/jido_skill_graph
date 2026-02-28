@@ -59,6 +59,12 @@ mix run scripts/search_benchmark.exs --profile medium --backend both --iteration
 mix run scripts/search_benchmark.exs --profile large --backend both --iterations 20
 ```
 
+Run all profiles in one pass and write a JSON report:
+
+```sh
+mix run scripts/search_benchmark.exs --profile all --backend both --iterations 20 --warmup-iterations 5 --output tmp/search_benchmark_report.json
+```
+
 ## Local Development Configuration Example
 
 Supervised runtime with explicit store/loader names:
