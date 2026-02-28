@@ -1,7 +1,7 @@
 defmodule JidoSkillGraph.SnapshotTest do
   use ExUnit.Case, async: true
 
-  alias JidoSkillGraph.{Edge, Node, Snapshot}
+  alias JidoSkillGraph.{Edge, Node, SearchIndex, Snapshot}
 
   test "new/1 with warn_and_skip drops unresolved edges and emits warnings" do
     node = Node.placeholder("graph", "a")
@@ -78,5 +78,40 @@ defmodule JidoSkillGraph.SnapshotTest do
     assert Snapshot.edges(indexed) == [edge]
     assert Snapshot.out_edges(indexed, "a") == [edge]
     assert Snapshot.in_edges(indexed, "b") == [edge]
+  end
+
+  test "new/1 accepts search index metadata" do
+    node = Node.placeholder("graph", "a")
+
+    assert {:ok, search_index} =
+             SearchIndex.new(
+               build_version: 1,
+               document_count: 1,
+               avg_field_lengths: %{id: 1.0, title: 2.0, tags: 3.0, body: 4.0}
+             )
+
+    assert {:ok, snapshot} =
+             Snapshot.new(
+               graph_id: "graph",
+               nodes: [node],
+               edges: [],
+               unresolved_link_policy: :warn_and_skip,
+               search_index: search_index
+             )
+
+    assert snapshot.search_index == search_index
+  end
+
+  test "new/1 rejects invalid search index shape" do
+    node = Node.placeholder("graph", "a")
+
+    assert {:error, {:invalid_search_index, :invalid_shape}} =
+             Snapshot.new(
+               graph_id: "graph",
+               nodes: [node],
+               edges: [],
+               unresolved_link_policy: :warn_and_skip,
+               search_index: %{invalid: true}
+             )
   end
 end
