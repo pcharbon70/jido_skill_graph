@@ -451,6 +451,34 @@ Acceptance criteria:
 - Unit tests validate guardrail evaluation edge cases without running benchmark
   end-to-end.
 
+---
+
+### Phase 15: Config-Driven Guardrail Thresholds
+
+Objective:
+Keep benchmark guardrail thresholds centralized and reusable across local runs
+and CI workflows.
+
+Changes:
+
+- Add `--guardrail-config <path>` support to `scripts/search_benchmark.exs`.
+- Load guardrail values from a JSON file when provided:
+  - `min_speedup_p50`
+  - `min_speedup_p95`
+  - `max_memory_delta_mb`
+  - `enforce_profiles`
+- Keep CLI threshold arguments as explicit overrides over config-file values.
+- Add `scripts/search_benchmark_guardrails.ci.json` as the tracked CI baseline.
+- Update `.github/workflows/benchmark-guardrails.yml` to consume the config file
+  and render summary thresholds from exported report JSON.
+- Add config loader unit tests and README usage examples.
+
+Acceptance criteria:
+
+- Benchmark script accepts guardrail thresholds via JSON config file.
+- Invalid/missing config file fails fast with a clear error.
+- CI workflow no longer hard-codes threshold values in command flags.
+
 ## 6. Testing Plan by Layer
 
 Unit tests:

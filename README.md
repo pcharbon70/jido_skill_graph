@@ -71,10 +71,17 @@ Fail CI on perf regression with guardrails:
 mix run scripts/search_benchmark.exs --profile all --backend both --iterations 10 --warmup-iterations 2 --min-speedup-p50 5.0 --min-speedup-p95 4.0 --max-memory-delta-mb 80 --output tmp/search_benchmark_guardrail.json
 ```
 
+Or load guardrail thresholds from a tracked JSON config:
+
+```sh
+mix run scripts/search_benchmark.exs --profile all --backend both --iterations 10 --warmup-iterations 2 --guardrail-config scripts/search_benchmark_guardrails.ci.json --output tmp/search_benchmark_guardrail.json
+```
+
 The repository also includes an automated benchmark guardrail workflow:
 
 - workflow: `.github/workflows/benchmark-guardrails.yml`
 - triggers: pull requests, pushes to `main`, and manual dispatch
+- config: `scripts/search_benchmark_guardrails.ci.json`
 - artifact: `search-benchmark-report` (`tmp/search_benchmark_ci_report.json`)
 
 ## Local Development Configuration Example

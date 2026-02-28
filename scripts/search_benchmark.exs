@@ -1,9 +1,8 @@
-Mix.Task.run("app.start")
-
 defmodule SearchBenchmark do
   @moduledoc false
 
   alias JidoSkillGraph.{BenchmarkGuardrails, Snapshot}
+  alias JidoSkillGraph.BenchmarkGuardrails.Config, as: GuardrailConfig
 
   @default_queries ["alpha", "core", "references", "beta", "a"]
   @default_backend_mode :indexed
@@ -46,6 +45,7 @@ defmodule SearchBenchmark do
           backend: :string,
           profile: :string,
           output: :string,
+          guardrail_config: :string,
           min_speedup_p50: :string,
           min_speedup_p95: :string,
           max_memory_delta_mb: :string,
@@ -62,21 +62,27 @@ defmodule SearchBenchmark do
     backend_mode = parsed |> Keyword.get(:backend, "indexed") |> normalize_backend_mode()
     profile_mode = parsed |> Keyword.get(:profile, "fixture") |> normalize_profile_mode()
     output_path = parsed |> Keyword.get(:output) |> normalize_output_path()
+    guardrail_config_path = parsed |> Keyword.get(:guardrail_config) |> normalize_output_path()
+    guardrail_config = load_guardrail_config!(guardrail_config_path)
 
     min_speedup_p50 =
-      parsed |> Keyword.get(:min_speedup_p50) |> normalize_positive_threshold(:min_speedup_p50)
+      parsed
+      |> Keyword.get(:min_speedup_p50, Map.get(guardrail_config, "min_speedup_p50"))
+      |> normalize_positive_threshold(:min_speedup_p50)
 
     min_speedup_p95 =
-      parsed |> Keyword.get(:min_speedup_p95) |> normalize_positive_threshold(:min_speedup_p95)
+      parsed
+      |> Keyword.get(:min_speedup_p95, Map.get(guardrail_config, "min_speedup_p95"))
+      |> normalize_positive_threshold(:min_speedup_p95)
 
     max_memory_delta_mb =
       parsed
-      |> Keyword.get(:max_memory_delta_mb)
+      |> Keyword.get(:max_memory_delta_mb, Map.get(guardrail_config, "max_memory_delta_mb"))
       |> normalize_non_negative_threshold(:max_memory_delta_mb)
 
     enforce_profiles =
       parsed
-      |> Keyword.get(:enforce_profiles)
+      |> Keyword.get(:enforce_profiles, Map.get(guardrail_config, "enforce_profiles"))
       |> normalize_enforce_profiles()
 
     iterations = max(1, Keyword.get(parsed, :iterations, @default_iterations))
@@ -99,6 +105,7 @@ defmodule SearchBenchmark do
       backend_mode: backend_mode,
       profile_mode: profile_mode,
       output_path: output_path,
+      guardrail_config_path: guardrail_config_path,
       min_speedup_p50: min_speedup_p50,
       min_speedup_p95: min_speedup_p95,
       max_memory_delta_mb: max_memory_delta_mb,
@@ -145,6 +152,18 @@ defmodule SearchBenchmark do
   defp normalize_output_path(nil), do: nil
   defp normalize_output_path(path) when is_binary(path), do: Path.expand(path)
   defp normalize_output_path(_path), do: nil
+
+  defp load_guardrail_config!(nil), do: %{}
+
+  defp load_guardrail_config!(path) when is_binary(path) do
+    case GuardrailConfig.load(path) do
+      {:ok, config} ->
+        config
+
+      {:error, reason} ->
+        raise "invalid guardrail config at #{path}: #{inspect(reason)}"
+    end
+  end
 
   defp normalize_positive_threshold(nil, _name), do: nil
 
@@ -195,11 +214,27 @@ defmodule SearchBenchmark do
     end
   end
 
+  defp normalize_enforce_profiles(value) when is_list(value) do
+    value
+    |> Enum.flat_map(&expand_profile_token/1)
+    |> Enum.uniq()
+    |> case do
+      [] -> nil
+      profiles -> profiles
+    end
+  end
+
   defp normalize_enforce_profiles(_value), do: nil
 
   defp unknown_profile_mode(other) do
     IO.warn("unknown profile '#{other}', falling back to #{@default_profile_mode}")
     @default_profile_mode
+  end
+
+  defp expand_profile_token(token) when is_atom(token) do
+    token
+    |> Atom.to_string()
+    |> expand_profile_token()
   end
 
   defp expand_profile_token(token) when is_binary(token) do
@@ -212,6 +247,8 @@ defmodule SearchBenchmark do
       other -> warn_unknown_enforced_profile(other)
     end
   end
+
+  defp expand_profile_token(other), do: warn_unknown_enforced_profile(inspect(other))
 
   defp warn_unknown_enforced_profile(profile) do
     IO.warn("unknown enforced profile '#{profile}', ignoring")
@@ -611,6 +648,7 @@ defmodule SearchBenchmark do
       options: %{
         backend_mode: opts.backend_mode,
         profile_mode: opts.profile_mode,
+        guardrail_config_path: opts.guardrail_config_path,
         iterations: opts.iterations,
         warmup_iterations: opts.warmup_iterations,
         limit: opts.limit,
@@ -618,6 +656,7 @@ defmodule SearchBenchmark do
       },
       guardrails: %{
         configured: BenchmarkGuardrails.configured?(opts),
+        config_path: opts.guardrail_config_path,
         enforced_profiles: BenchmarkGuardrails.enforced_profiles(opts),
         min_speedup_p50: opts.min_speedup_p50,
         min_speedup_p95: opts.min_speedup_p95,
