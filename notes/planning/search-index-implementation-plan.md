@@ -346,6 +346,35 @@ Acceptance criteria:
 - Output includes corpus-level memory and reload metrics.
 - Small/medium/large profile commands are documented for repeatable perf checks.
 
+---
+
+### Phase 11: Multi-Profile Benchmark Sweep and Report Export
+
+Objective:
+Make cross-profile performance tracking easier to run and archive.
+
+Changes:
+
+- Extend benchmark profile mode with `--profile all` to run:
+  - fixture
+  - small
+  - medium
+  - large
+  in a single command execution.
+- Add suite-level summary output across profiles including:
+  - corpus size
+  - reload latency
+  - memory delta
+  - p50/p95 basic-vs-indexed speedup (when both backends are enabled)
+- Add optional JSON report export via `--output <path>` for trend tracking.
+- Update README with one-command sweep and report export usage.
+
+Acceptance criteria:
+
+- One command can benchmark all supported profiles sequentially.
+- Output includes a suite summary line per profile.
+- JSON report export is available for downstream analysis.
+
 ## 6. Testing Plan by Layer
 
 Unit tests:

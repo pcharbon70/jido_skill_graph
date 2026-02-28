@@ -19,53 +19,13 @@ defmodule SearchBenchmark do
 
   def run(args) do
     opts = parse_args(args)
+    reports = run_profiles(opts)
 
-    with_prepared_root(opts, fn prepared_opts ->
-      {:ok, _pid} =
-        JidoSkillGraph.start_link(
-          name: prepared_opts.graph_name,
-          store: [name: prepared_opts.store_name],
-          loader: [
-            name: prepared_opts.loader_name,
-            load_on_start: false,
-            builder_opts: [root: prepared_opts.root, graph_id: prepared_opts.graph_id]
-          ]
-        )
+    if opts.profile_mode == :all do
+      print_profile_suite_summary(reports)
+    end
 
-      memory_before = :erlang.memory(:total)
-
-      {reload_micros, reload_result} =
-        :timer.tc(fn ->
-          JidoSkillGraph.reload(prepared_opts.loader_name)
-        end)
-
-      case reload_result do
-        :ok ->
-          :ok
-
-        {:error, reason} ->
-          raise "search benchmark reload failed: #{inspect(reason)}"
-
-        other ->
-          raise "search benchmark reload returned unexpected response: #{inspect(other)}"
-      end
-
-      snapshot = JidoSkillGraph.current_snapshot(prepared_opts.store_name)
-      memory_after = :erlang.memory(:total)
-      corpus_stats = summarize_corpus(snapshot, memory_before, memory_after, reload_micros)
-      backend_plan = backend_plan(prepared_opts.backend_mode)
-
-      print_run_header(prepared_opts, backend_plan, corpus_stats)
-
-      results =
-        backend_plan
-        |> Enum.map(fn {backend_key, backend_module} ->
-          {backend_key, benchmark_backend(prepared_opts, backend_module)}
-        end)
-        |> Map.new()
-
-      print_results(prepared_opts, results)
-    end)
+    maybe_write_report(opts.output_path, reports)
   end
 
   defp parse_args(args) do
@@ -78,6 +38,7 @@ defmodule SearchBenchmark do
           graph_id: :string,
           backend: :string,
           profile: :string,
+          output: :string,
           queries: :string,
           iterations: :integer,
           warmup_iterations: :integer,
@@ -89,6 +50,7 @@ defmodule SearchBenchmark do
     graph_id = Keyword.get(parsed, :graph_id, "benchmark")
     backend_mode = parsed |> Keyword.get(:backend, "indexed") |> normalize_backend_mode()
     profile_mode = parsed |> Keyword.get(:profile, "fixture") |> normalize_profile_mode()
+    output_path = parsed |> Keyword.get(:output) |> normalize_output_path()
     iterations = max(1, Keyword.get(parsed, :iterations, @default_iterations))
 
     warmup_iterations =
@@ -108,13 +70,11 @@ defmodule SearchBenchmark do
       graph_id: graph_id,
       backend_mode: backend_mode,
       profile_mode: profile_mode,
+      output_path: output_path,
       queries: queries,
       iterations: iterations,
       warmup_iterations: warmup_iterations,
-      limit: limit,
-      graph_name: :"SearchBenchmark.Graph.#{System.unique_integer([:positive])}",
-      store_name: :"SearchBenchmark.Store.#{System.unique_integer([:positive])}",
-      loader_name: :"SearchBenchmark.Loader.#{System.unique_integer([:positive])}"
+      limit: limit
     }
   end
 
@@ -143,15 +103,116 @@ defmodule SearchBenchmark do
       "small" -> :small
       "medium" -> :medium
       "large" -> :large
+      "all" -> :all
       other -> unknown_profile_mode(other)
     end
   end
 
   defp normalize_profile_mode(_value), do: @default_profile_mode
 
+  defp normalize_output_path(nil), do: nil
+  defp normalize_output_path(path) when is_binary(path), do: Path.expand(path)
+  defp normalize_output_path(_path), do: nil
+
   defp unknown_profile_mode(other) do
     IO.warn("unknown profile '#{other}', falling back to #{@default_profile_mode}")
     @default_profile_mode
+  end
+
+  defp run_profiles(%{profile_mode: :all} = opts) do
+    [:fixture, :small, :medium, :large]
+    |> Enum.map(fn profile_mode ->
+      IO.puts("\n=== profile=#{profile_mode} ===")
+      run_single_profile(%{opts | profile_mode: profile_mode})
+    end)
+  end
+
+  defp run_profiles(opts) do
+    [run_single_profile(opts)]
+  end
+
+  defp run_single_profile(opts) do
+    with_prepared_root(opts, fn prepared_opts ->
+      runtime = runtime_names()
+      runtime_opts = Map.merge(prepared_opts, runtime)
+
+      {:ok, graph_pid} =
+        JidoSkillGraph.start_link(
+          name: runtime_opts.graph_name,
+          store: [name: runtime_opts.store_name],
+          loader: [
+            name: runtime_opts.loader_name,
+            load_on_start: false,
+            builder_opts: [root: runtime_opts.root, graph_id: runtime_opts.graph_id]
+          ]
+        )
+
+      try do
+        memory_before = :erlang.memory(:total)
+
+        {reload_micros, reload_result} =
+          :timer.tc(fn ->
+            JidoSkillGraph.reload(runtime_opts.loader_name)
+          end)
+
+        case reload_result do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            raise "search benchmark reload failed: #{inspect(reason)}"
+
+          other ->
+            raise "search benchmark reload returned unexpected response: #{inspect(other)}"
+        end
+
+        snapshot = JidoSkillGraph.current_snapshot(runtime_opts.store_name)
+        memory_after = :erlang.memory(:total)
+        corpus_stats = summarize_corpus(snapshot, memory_before, memory_after, reload_micros)
+        backend_plan = backend_plan(runtime_opts.backend_mode)
+
+        print_run_header(runtime_opts, backend_plan, corpus_stats)
+
+        results =
+          backend_plan
+          |> Enum.map(fn {backend_key, backend_module} ->
+            {backend_key, benchmark_backend(runtime_opts, backend_module)}
+          end)
+          |> Map.new()
+
+        print_results(runtime_opts, results)
+
+        %{
+          profile: runtime_opts.profile_mode,
+          graph_id: runtime_opts.graph_id,
+          root: runtime_opts.root,
+          backend_mode: runtime_opts.backend_mode,
+          queries: runtime_opts.queries,
+          iterations: runtime_opts.iterations,
+          warmup_iterations: runtime_opts.warmup_iterations,
+          limit: runtime_opts.limit,
+          corpus: corpus_stats,
+          results: results
+        }
+      after
+        maybe_stop_graph(graph_pid)
+      end
+    end)
+  end
+
+  defp runtime_names do
+    %{
+      graph_name: :"SearchBenchmark.Graph.#{System.unique_integer([:positive])}",
+      store_name: :"SearchBenchmark.Store.#{System.unique_integer([:positive])}",
+      loader_name: :"SearchBenchmark.Loader.#{System.unique_integer([:positive])}"
+    }
+  end
+
+  defp maybe_stop_graph(graph_pid) when is_pid(graph_pid) do
+    Supervisor.stop(graph_pid)
+  catch
+    :exit, _reason -> :ok
+    :error, _reason -> :ok
   end
 
   defp with_prepared_root(%{profile_mode: :fixture} = opts, callback)
@@ -374,6 +435,49 @@ defmodule SearchBenchmark do
 
   defp print_results(opts, %{basic: basic_stats}) do
     print_backend_stats("basic", basic_stats, opts.queries)
+  end
+
+  defp print_profile_suite_summary(reports) do
+    IO.puts("\nprofile_suite_summary")
+
+    Enum.each(reports, fn report ->
+      profile = report.profile
+      corpus = report.corpus
+      indexed_stats = Map.get(report.results, :indexed)
+      basic_stats = Map.get(report.results, :basic)
+
+      speedup_p50 =
+        if indexed_stats && basic_stats do
+          speedup_ratio(basic_stats.overall.p50_ms, indexed_stats.overall.p50_ms)
+        else
+          "n/a"
+        end
+
+      speedup_p95 =
+        if indexed_stats && basic_stats do
+          speedup_ratio(basic_stats.overall.p95_ms, indexed_stats.overall.p95_ms)
+        else
+          "n/a"
+        end
+
+      IO.puts(
+        "profile=#{profile} nodes=#{corpus.node_count} docs=#{corpus.document_count} reload_ms=#{round_ms(corpus.reload_ms)} memory_delta_mb=#{round_mb(corpus.memory_delta_bytes)} speedup_p50=#{speedup_p50} speedup_p95=#{speedup_p95}"
+      )
+    end)
+  end
+
+  defp maybe_write_report(nil, _reports), do: :ok
+
+  defp maybe_write_report(output_path, reports) do
+    payload = %{
+      generated_at: DateTime.utc_now() |> DateTime.to_iso8601(),
+      reports: reports
+    }
+
+    :ok = File.mkdir_p(Path.dirname(output_path))
+    :ok = File.write(output_path, Jason.encode!(payload, pretty: true))
+    IO.puts("\nreport_written=#{output_path}")
+    :ok
   end
 
   defp print_backend_stats(label, stats, queries) do
