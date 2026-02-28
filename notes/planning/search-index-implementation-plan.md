@@ -375,6 +375,31 @@ Acceptance criteria:
 - Output includes a suite summary line per profile.
 - JSON report export is available for downstream analysis.
 
+---
+
+### Phase 12: Benchmark Guardrails and Regression Exit Codes
+
+Objective:
+Turn benchmark runs into enforceable quality gates for CI and release checks.
+
+Changes:
+
+- Add benchmark guardrail options:
+  - `--min-speedup-p50`
+  - `--min-speedup-p95`
+  - `--max-memory-delta-mb`
+  - optional `--enforce-profiles` selector
+- Evaluate thresholds per profile and emit clear pass/fail diagnostics.
+- Exit with non-zero status when guardrails fail.
+- Include guardrail config/status/failures in JSON report export payload.
+- Update README with guardrail command examples for CI usage.
+
+Acceptance criteria:
+
+- Benchmark can fail fast on configured speedup or memory regressions.
+- Failures identify profile + metric + observed value + expected threshold.
+- Exported report captures guardrail status for downstream automation.
+
 ## 6. Testing Plan by Layer
 
 Unit tests:
