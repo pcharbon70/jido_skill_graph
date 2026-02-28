@@ -424,6 +424,33 @@ Acceptance criteria:
 - Workflow always uploads benchmark JSON report artifact.
 - Step summary includes guardrail status and any profile-level failures.
 
+---
+
+### Phase 14: Guardrail Evaluation Module and Unit Coverage
+
+Objective:
+Improve maintainability and confidence by moving benchmark guardrail logic into a
+testable library module.
+
+Changes:
+
+- Add `JidoSkillGraph.BenchmarkGuardrails` for:
+  - threshold configuration detection
+  - enforced profile selection
+  - profile-level guardrail evaluation
+  - guardrail status derivation
+- Update `scripts/search_benchmark.exs` to call the shared module instead of
+  inline guardrail logic.
+- Add unit tests for pass/fail, missing-metric, profile-selection, and status
+  behavior.
+
+Acceptance criteria:
+
+- Guardrail behavior remains unchanged for benchmark CLI consumers.
+- Script and JSON report guardrail fields are driven by shared module functions.
+- Unit tests validate guardrail evaluation edge cases without running benchmark
+  end-to-end.
+
 ## 6. Testing Plan by Layer
 
 Unit tests:
