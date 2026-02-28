@@ -8,7 +8,9 @@ defmodule JidoSkillGraph.Store do
 
   use GenServer
 
-  alias JidoSkillGraph.{Snapshot, Telemetry}
+  alias JidoSkillGraph.SearchIndex.Trigram
+  alias JidoSkillGraph.Snapshot
+  alias JidoSkillGraph.Telemetry
 
   @type state :: %{
           name: GenServer.name() | nil,
@@ -257,7 +259,7 @@ defmodule JidoSkillGraph.Store do
          :ok <- insert_search_postings(tables.ets_search_postings, snapshot),
          :ok <- insert_search_doc_stats(tables.ets_search_docs, snapshot),
          :ok <- insert_search_body_cache(tables.ets_search_bodies, snapshot) do
-      insert_search_trigram_placeholders(tables.ets_search_trigrams, snapshot)
+      insert_search_trigrams(tables.ets_search_trigrams, snapshot)
     end
   end
 
@@ -339,9 +341,39 @@ defmodule JidoSkillGraph.Store do
     kind, reason -> {:error, {:insert_search_body_cache_failed, {kind, reason}}}
   end
 
-  # Placeholder table for Phase 6 trigram index.
-  defp insert_search_trigram_placeholders(ets_search_trigrams, %Snapshot{} = snapshot) do
-    rows = [{:__meta__, %{enabled: false, graph_id: snapshot.graph_id}}]
+  defp insert_search_trigrams(ets_search_trigrams, %Snapshot{} = snapshot) do
+    terms =
+      snapshot
+      |> search_index_meta()
+      |> Map.get(:document_frequencies, %{})
+      |> Map.keys()
+      |> Enum.filter(&is_binary/1)
+      |> Enum.map(&String.downcase/1)
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    trigram_rows =
+      terms
+      |> Enum.flat_map(&Trigram.dictionary_entries/1)
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    trigram_count =
+      trigram_rows
+      |> Enum.map(&elem(&1, 0))
+      |> MapSet.new()
+      |> MapSet.size()
+
+    meta_row =
+      {:__meta__,
+       %{
+         enabled: trigram_count > 0,
+         graph_id: snapshot.graph_id,
+         terms: length(terms),
+         trigram_count: trigram_count
+       }}
+
+    rows = [meta_row | trigram_rows]
     true = :ets.insert(ets_search_trigrams, rows)
     :ok
   catch

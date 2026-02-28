@@ -9,14 +9,20 @@ defmodule JidoSkillGraph.SearchBackend.Indexed do
 
   @behaviour JidoSkillGraph.SearchBackend
 
-  alias JidoSkillGraph.{SearchIndex, Snapshot}
+  alias JidoSkillGraph.SearchIndex
   alias JidoSkillGraph.SearchIndex.Tokenizer
+  alias JidoSkillGraph.SearchIndex.Trigram
+  alias JidoSkillGraph.Snapshot
 
   @default_fields [:title, :tags, :body, :id]
   @valid_fields MapSet.new([:id, :title, :tags, :body])
   @default_limit 20
   @max_limit 200
   @default_operator :or
+  @default_fuzzy false
+  @default_fuzzy_max_expansions 3
+  @max_fuzzy_max_expansions 10
+  @default_fuzzy_min_similarity 0.2
 
   @k1 1.2
   @b 0.75
@@ -27,16 +33,18 @@ defmodule JidoSkillGraph.SearchBackend.Indexed do
     with :ok <- ensure_graph(snapshot, graph_id),
          {:ok, terms} <- normalize_terms(query, opts),
          {:ok, fields} <- normalize_fields(opts),
-         {:ok, operator} <- normalize_operator(opts) do
+         {:ok, operator} <- normalize_operator(opts),
+         {:ok, fuzzy?} <- normalize_fuzzy(opts) do
       limit = normalize_limit(opts)
 
       if terms == [] do
         {:ok, []}
       else
         corpus = normalize_corpus_stats(Snapshot.search_corpus_stats(snapshot))
+        search_terms = expand_terms(snapshot, terms, fields, fuzzy?, opts)
 
         snapshot
-        |> score_candidates(terms, fields, corpus)
+        |> score_candidates(search_terms, fields, corpus)
         |> apply_operator(operator, length(terms))
         |> Enum.map(&to_result(snapshot, &1))
         |> Enum.reject(&is_nil/1)
@@ -123,6 +131,41 @@ defmodule JidoSkillGraph.SearchBackend.Indexed do
     end
   end
 
+  defp normalize_fuzzy(opts) do
+    case Keyword.get(opts, :fuzzy, @default_fuzzy) do
+      value when is_boolean(value) ->
+        {:ok, value}
+
+      value when is_binary(value) ->
+        case value |> String.trim() |> String.downcase() do
+          "true" -> {:ok, true}
+          "false" -> {:ok, false}
+          _ -> {:error, {:invalid_search_fuzzy, value}}
+        end
+
+      value ->
+        {:error, {:invalid_search_fuzzy, value}}
+    end
+  end
+
+  defp normalize_fuzzy_max_expansions(opts) do
+    case Keyword.get(opts, :fuzzy_max_expansions, @default_fuzzy_max_expansions) do
+      n when is_integer(n) and n > 0 ->
+        min(n, @max_fuzzy_max_expansions)
+
+      _other ->
+        @default_fuzzy_max_expansions
+    end
+  end
+
+  defp normalize_fuzzy_min_similarity(opts) do
+    case Keyword.get(opts, :fuzzy_min_similarity, @default_fuzzy_min_similarity) do
+      n when is_integer(n) and n >= 0 and n <= 1 -> n / 1
+      n when is_float(n) and n >= 0.0 and n <= 1.0 -> n
+      _other -> @default_fuzzy_min_similarity
+    end
+  end
+
   defp normalize_corpus_stats(corpus) when is_map(corpus) do
     %{
       document_count: Map.get(corpus, :document_count, 0),
@@ -132,37 +175,118 @@ defmodule JidoSkillGraph.SearchBackend.Indexed do
     }
   end
 
-  defp score_candidates(snapshot, terms, fields, corpus) do
-    terms
-    |> Enum.reduce(%{}, &score_term(snapshot, &1, fields, corpus, &2))
-    |> Map.values()
-  end
-
-  defp score_term(snapshot, term, fields, corpus, candidates) do
-    fields
-    |> Enum.filter(&MapSet.member?(@valid_fields, &1))
-    |> Enum.reduce(candidates, &score_term_field(snapshot, term, &1, corpus, &2))
-  end
-
-  defp score_term_field(snapshot, term, field, corpus, candidates) do
-    Snapshot.search_postings(snapshot, term, field)
-    |> Enum.reduce(candidates, fn {node_id, tf}, node_acc ->
-      update_candidate(node_acc, snapshot, node_id, term, field, tf, corpus)
+  defp expand_terms(_snapshot, terms, _fields, false, _opts) do
+    Enum.map(terms, fn term ->
+      %{query_term: term, index_term: term, boost: 1.0}
     end)
   end
 
-  defp update_candidate(candidates, snapshot, node_id, term, field, tf, corpus) do
+  defp expand_terms(snapshot, terms, fields, true, opts) do
+    max_expansions = normalize_fuzzy_max_expansions(opts)
+    min_similarity = normalize_fuzzy_min_similarity(opts)
+
+    Enum.flat_map(
+      terms,
+      &expand_term(snapshot, &1, fields, max_expansions, min_similarity)
+    )
+  end
+
+  defp expand_term(snapshot, term, fields, max_expansions, min_similarity) do
+    exact = %{query_term: term, index_term: term, boost: 1.0}
+
+    if has_postings_for_term?(snapshot, term, fields) do
+      [exact]
+    else
+      [exact | fuzzy_expansions(snapshot, term, max_expansions, min_similarity)]
+    end
+  end
+
+  defp fuzzy_expansions(snapshot, term, max_expansions, min_similarity) do
+    snapshot
+    |> fuzzy_candidates(term, max_expansions, min_similarity)
+    |> Enum.map(fn {candidate_term, similarity} ->
+      %{query_term: term, index_term: candidate_term, boost: similarity}
+    end)
+  end
+
+  defp has_postings_for_term?(snapshot, term, fields) do
+    fields
+    |> Enum.filter(&MapSet.member?(@valid_fields, &1))
+    |> Enum.any?(fn field ->
+      Snapshot.search_postings(snapshot, term, field) != []
+    end)
+  end
+
+  defp fuzzy_candidates(snapshot, term, max_expansions, min_similarity) do
+    term
+    |> Trigram.term_trigrams()
+    |> Enum.flat_map(&Snapshot.search_trigram_terms(snapshot, &1))
+    |> Enum.reject(&(&1 == term))
+    |> Enum.uniq()
+    |> Enum.map(fn candidate_term ->
+      {candidate_term, Trigram.jaccard_similarity(term, candidate_term)}
+    end)
+    |> Enum.filter(fn {_candidate_term, similarity} -> similarity >= min_similarity end)
+    |> Enum.sort_by(fn {candidate_term, similarity} -> {-similarity, candidate_term} end)
+    |> Enum.take(max_expansions)
+  end
+
+  defp score_candidates(snapshot, search_terms, fields, corpus) do
+    search_terms
+    |> Enum.reduce(%{}, &score_search_term(snapshot, &1, fields, corpus, &2))
+    |> Map.values()
+  end
+
+  defp score_search_term(
+         snapshot,
+         %{query_term: _query_term, index_term: _index_term, boost: _boost} = search_term,
+         fields,
+         corpus,
+         candidates
+       ) do
+    fields
+    |> Enum.filter(&MapSet.member?(@valid_fields, &1))
+    |> Enum.reduce(
+      candidates,
+      &score_index_term_field(snapshot, search_term, &1, corpus, &2)
+    )
+  end
+
+  defp score_search_term(_snapshot, _search_term, _fields, _corpus, candidates), do: candidates
+
+  defp score_index_term_field(
+         snapshot,
+         %{index_term: index_term} = search_term,
+         field,
+         corpus,
+         candidates
+       ) do
+    Snapshot.search_postings(snapshot, index_term, field)
+    |> Enum.reduce(candidates, fn {node_id, tf}, node_acc ->
+      update_candidate(node_acc, snapshot, node_id, search_term, field, tf, corpus)
+    end)
+  end
+
+  defp update_candidate(
+         candidates,
+         snapshot,
+         node_id,
+         %{query_term: query_term, index_term: index_term, boost: boost},
+         field,
+         tf,
+         corpus
+       ) do
     doc_stats = Snapshot.search_doc_stats(snapshot, node_id) || %{}
 
     increment =
-      score_term_field(
+      term_field_score(
         tf,
         corpus.document_count,
-        Map.get(corpus.document_frequencies, term, 0),
+        Map.get(corpus.document_frequencies, index_term, 0),
         Map.get(doc_stats, field, 0),
         Map.get(corpus.avg_field_lengths, field, 0.0),
         field
-      )
+      ) * max(boost, 0.0)
 
     Map.update(
       candidates,
@@ -170,21 +294,23 @@ defmodule JidoSkillGraph.SearchBackend.Indexed do
       %{
         node_id: node_id,
         score: increment,
-        matched_terms: MapSet.new([term]),
+        matched_terms: MapSet.new([index_term]),
+        matched_queries: MapSet.new([query_term]),
         matched_fields: MapSet.new([field])
       },
       fn candidate ->
         %{
           candidate
           | score: candidate.score + increment,
-            matched_terms: MapSet.put(candidate.matched_terms, term),
+            matched_terms: MapSet.put(candidate.matched_terms, index_term),
+            matched_queries: MapSet.put(candidate.matched_queries, query_term),
             matched_fields: MapSet.put(candidate.matched_fields, field)
         }
       end
     )
   end
 
-  defp score_term_field(tf, doc_count, document_frequency, field_len, avg_field_len, field) do
+  defp term_field_score(tf, doc_count, document_frequency, field_len, avg_field_len, field) do
     tf = normalize_non_negative_float(tf)
     doc_count = normalize_non_negative_float(doc_count)
     document_frequency = normalize_non_negative_float(document_frequency)
@@ -224,13 +350,13 @@ defmodule JidoSkillGraph.SearchBackend.Indexed do
 
   defp apply_operator(candidates, :and, term_count) do
     Enum.filter(candidates, fn candidate ->
-      MapSet.size(candidate.matched_terms) == term_count
+      MapSet.size(candidate.matched_queries) == term_count
     end)
   end
 
   defp apply_operator(candidates, :or, term_count) do
     Enum.map(candidates, fn candidate ->
-      coverage = MapSet.size(candidate.matched_terms) / max(term_count, 1)
+      coverage = MapSet.size(candidate.matched_queries) / max(term_count, 1)
       adjusted_score = candidate.score * (0.5 + 0.5 * coverage)
       %{candidate | score: adjusted_score}
     end)
