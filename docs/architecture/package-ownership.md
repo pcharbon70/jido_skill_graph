@@ -2,7 +2,7 @@
 
 This document is the source of truth for ownership boundaries across the skill graph architecture.
 
-## Core: `jido_skill_graph`
+## Core: `jido_skillset`
 
 - Skill and manifest discovery
 - Frontmatter and markdown parsing

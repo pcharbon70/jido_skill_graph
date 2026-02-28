@@ -1,8 +1,8 @@
 defmodule SearchBenchmark do
   @moduledoc false
 
-  alias JidoSkillGraph.{BenchmarkGuardrails, Snapshot}
-  alias JidoSkillGraph.BenchmarkGuardrails.Config, as: GuardrailConfig
+  alias Jido.Skillset.{BenchmarkGuardrails, Snapshot}
+  alias Jido.Skillset.BenchmarkGuardrails.Config, as: GuardrailConfig
 
   @default_queries ["alpha", "core", "references", "beta", "a"]
   @default_backend_mode :indexed
@@ -289,7 +289,7 @@ defmodule SearchBenchmark do
       runtime_opts = Map.merge(prepared_opts, runtime)
 
       {:ok, graph_pid} =
-        JidoSkillGraph.start_link(
+        Jido.Skillset.start_link(
           name: runtime_opts.graph_name,
           store: [name: runtime_opts.store_name],
           loader: [
@@ -304,7 +304,7 @@ defmodule SearchBenchmark do
 
         {reload_micros, reload_result} =
           :timer.tc(fn ->
-            JidoSkillGraph.reload(runtime_opts.loader_name)
+            Jido.Skillset.reload(runtime_opts.loader_name)
           end)
 
         case reload_result do
@@ -318,7 +318,7 @@ defmodule SearchBenchmark do
             raise "search benchmark reload returned unexpected response: #{inspect(other)}"
         end
 
-        snapshot = JidoSkillGraph.current_snapshot(runtime_opts.store_name)
+        snapshot = Jido.Skillset.current_snapshot(runtime_opts.store_name)
         memory_after = :erlang.memory(:total)
         corpus_stats = summarize_corpus(snapshot, memory_before, memory_after, reload_micros)
         backend_plan = backend_plan(runtime_opts.backend_mode)
@@ -443,8 +443,8 @@ defmodule SearchBenchmark do
   defp backend_plan(:basic), do: [basic: backend_module(:basic)]
   defp backend_plan(:both), do: [indexed: backend_module(:indexed), basic: backend_module(:basic)]
 
-  defp backend_module(:indexed), do: JidoSkillGraph.SearchBackend.Indexed
-  defp backend_module(:basic), do: JidoSkillGraph.SearchBackend.Basic
+  defp backend_module(:indexed), do: Jido.Skillset.SearchBackend.Indexed
+  defp backend_module(:basic), do: Jido.Skillset.SearchBackend.Basic
 
   defp backend_labels(plan) do
     plan
@@ -545,7 +545,7 @@ defmodule SearchBenchmark do
   defp run_query(opts, query, backend_module) do
     {duration_micros, result} =
       :timer.tc(fn ->
-        JidoSkillGraph.search(opts.graph_id, query,
+        Jido.Skillset.search(opts.graph_id, query,
           store: opts.store_name,
           search_backend: backend_module,
           limit: opts.limit

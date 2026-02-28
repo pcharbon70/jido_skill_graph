@@ -1,6 +1,6 @@
 # Versioning Policy
 
-`jido_skill_graph` uses Semantic Versioning (`MAJOR.MINOR.PATCH`).
+`jido_skillset` uses Semantic Versioning (`MAJOR.MINOR.PATCH`).
 
 ## Compatibility Rules
 
@@ -11,7 +11,7 @@
 
 ## What Counts as Public API
 
-- Functions and types exposed by `JidoSkillGraph` and documented adapter entry
+- Functions and types exposed by `Jido.Skillset` and documented adapter entry
   points.
 - Runtime behavior guarantees documented in `docs/rfcs` and release notes.
 - Telemetry event names and metadata contracts in

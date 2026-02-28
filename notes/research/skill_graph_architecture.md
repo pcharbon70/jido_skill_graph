@@ -1,11 +1,11 @@
 # Skill Graph Architecture (Revised Scope)
 
-This document captures the scoped architecture for `jido_skill_graph` as a
+This document captures the scoped architecture for `jido_skillset` as a
 standalone graph library.
 
 ## 1. Package Boundaries
 
-`jido_skill_graph` owns:
+`jido_skillset` owns:
 
 - discovery of `SKILL.md` and `skill.md` files
 - optional manifest parsing (`graph.yml`)
@@ -14,7 +14,7 @@ standalone graph library.
 - snapshot storage and reload semantics
 - graph query and search APIs
 
-`jido_skill_graph` does not own:
+`jido_skillset` does not own:
 
 - skill authoring workflows
 - runtime orchestration policy
@@ -42,9 +42,9 @@ Mode B: pure library
 
 Core structs:
 
-- `JidoSkillGraph.Node`
-- `JidoSkillGraph.Edge`
-- `JidoSkillGraph.Snapshot`
+- `Jido.Skillset.Node`
+- `Jido.Skillset.Edge`
+- `Jido.Skillset.Snapshot`
 
 ## 4. File Format Compatibility
 

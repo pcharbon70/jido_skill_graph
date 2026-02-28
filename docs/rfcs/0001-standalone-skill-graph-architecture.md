@@ -23,7 +23,7 @@ If these are not split early, the system becomes hard to evolve, test, and publi
 
 ## 3. Goals
 
-- Build `jido_skill_graph` as a standalone library (Hex + Git repo compatible).
+- Build `jido_skillset` as a standalone library (Hex + Git repo compatible).
 - Keep runtime integrations as consumers through adapters.
 - Support both supervised and pure-library usage patterns.
 - Preserve compatibility with common skill markdown conventions.
@@ -38,14 +38,14 @@ If these are not split early, the system becomes hard to evolve, test, and publi
 
 We adopt the following architecture:
 
-- Core package: `jido_skill_graph`
+- Core package: `jido_skillset`
   - Owns discovery, parse pipeline, graph build, snapshot storage, query API.
 - Jido adapter layer
   - Owns supervision integration and Jido signal emission.
 
 ## 6. Package Boundaries
 
-### 6.1 `jido_skill_graph` owns
+### 6.1 `jido_skillset` owns
 
 - Skill file loading (`SKILL.md`, `skill.md`) and optional manifests (`graph.yml`).
 - Frontmatter parsing + markdown link extraction.
@@ -58,7 +58,7 @@ We adopt the following architecture:
   - read node body lazily
   - baseline search
 
-### 6.2 `jido_skill_graph` does not own
+### 6.2 `jido_skillset` does not own
 
 - LLM orchestration policies.
 - Agent runtime assumptions specific to Jido internals.
@@ -72,7 +72,7 @@ We adopt the following architecture:
 
 ## 7. Operating Modes
 
-`jido_skill_graph` must support both:
+`jido_skillset` must support both:
 
 - Supervised mode: exposes `child_spec/1` and manages in-memory snapshot lifecycle.
 - Pure mode: exposes `Builder.build/1` that returns immutable snapshot structs.

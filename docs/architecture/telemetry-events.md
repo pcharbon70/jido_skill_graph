@@ -1,13 +1,13 @@
 # Telemetry Events
 
-This document defines the core telemetry contract emitted by `jido_skill_graph`.
+This document defines the core telemetry contract emitted by `jido_skillset`.
 
-All events use the `[:jido_skill_graph, ...]` prefix.
+All events use the `[:jido_skillset, ...]` prefix.
 
 ## Loader Reload
 
-- Event: `[:jido_skill_graph, :loader, :reload]`
-- Emitted when `JidoSkillGraph.Loader` completes a reload attempt (success or failure).
+- Event: `[:jido_skillset, :loader, :reload]`
+- Emitted when `Jido.Skillset.Loader` completes a reload attempt (success or failure).
 
 Measurements:
 
@@ -31,8 +31,8 @@ Metadata (failure):
 
 ## Store Snapshot Swap
 
-- Event: `[:jido_skill_graph, :store, :snapshot_swap]`
-- Emitted when `JidoSkillGraph.Store` processes a snapshot swap attempt.
+- Event: `[:jido_skillset, :store, :snapshot_swap]`
+- Emitted when `Jido.Skillset.Store` processes a snapshot swap attempt.
 
 Measurements:
 
@@ -56,8 +56,8 @@ Metadata (failure):
 
 ## Query Node Read
 
-- Event: `[:jido_skill_graph, :query, :node_read]`
-- Emitted when `JidoSkillGraph.read_node_body/3` is called and completes (success or failure).
+- Event: `[:jido_skillset, :query, :node_read]`
+- Emitted when `Jido.Skillset.read_node_body/3` is called and completes (success or failure).
 
 Measurements:
 
@@ -75,8 +75,8 @@ Metadata:
 
 ## Query Search
 
-- Event: `[:jido_skill_graph, :query, :search]`
-- Emitted when `JidoSkillGraph.search/3` completes (success or failure).
+- Event: `[:jido_skillset, :query, :search]`
+- Emitted when `Jido.Skillset.search/3` completes (success or failure).
 
 Measurements:
 
@@ -91,7 +91,7 @@ Metadata:
 - `status` - `:ok` or `:error`
 - `graph_id` - requested graph id
 - `backend` - configured backend module (inspected). Defaults to
-  `JidoSkillGraph.SearchBackend.Indexed` when not explicitly provided.
+  `Jido.Skillset.SearchBackend.Indexed` when not explicitly provided.
 - `fields` - requested fields option or `:default`
 - `limit` - requested limit option (defaults to `20`)
 - `operator` - requested operator option (`:or` by default)
