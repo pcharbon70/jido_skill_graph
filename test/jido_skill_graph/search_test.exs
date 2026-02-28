@@ -33,10 +33,10 @@ defmodule JidoSkillGraph.SearchTest do
   test "search/3 supports limit and deterministic ordering" do
     {store_name, _loader_name} = load_graph("basic", "basic")
 
-    assert {:ok, one} = JidoSkillGraph.search("basic", "a", store: store_name, limit: 1)
+    assert {:ok, one} = JidoSkillGraph.search("basic", "alpha", store: store_name, limit: 1)
     assert length(one) == 1
 
-    assert {:ok, all} = JidoSkillGraph.search("basic", "a", store: store_name)
+    assert {:ok, all} = JidoSkillGraph.search("basic", "alpha", store: store_name)
     assert length(all) >= length(one)
   end
 
@@ -151,6 +151,16 @@ defmodule JidoSkillGraph.SearchTest do
              JidoSkillGraph.search("basic", "alpha",
                store: store_name,
                search_backend: Indexed,
+               fuzzy: :maybe
+             )
+  end
+
+  test "search/3 defaults to indexed backend" do
+    {store_name, _loader_name} = load_graph("basic", "basic")
+
+    assert {:error, {:invalid_search_fuzzy, :maybe}} =
+             JidoSkillGraph.search("basic", "alpha",
+               store: store_name,
                fuzzy: :maybe
              )
   end

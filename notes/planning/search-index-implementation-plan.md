@@ -245,6 +245,27 @@ Acceptance criteria:
 - Misspelled queries recover relevant results in targeted tests
 - Precision remains acceptable with conservative expansion thresholds
 
+---
+
+### Phase 7: Indexed Backend as Default
+
+Objective:
+Make indexed search the default runtime path while retaining explicit fallback.
+
+Changes:
+
+- Set `JidoSkillGraph.Query.search/4` default backend to
+  `JidoSkillGraph.SearchBackend.Indexed`.
+- Keep explicit backend override support so callers can still pass
+  `search_backend: JidoSkillGraph.SearchBackend.Basic` when needed.
+- Update telemetry expectations and regression tests for default-backend behavior.
+
+Acceptance criteria:
+
+- `JidoSkillGraph.search/3` uses indexed backend when `search_backend` is omitted.
+- Existing override semantics remain backward compatible.
+- Search telemetry backend metadata reflects indexed default path.
+
 ## 6. Testing Plan by Layer
 
 Unit tests:

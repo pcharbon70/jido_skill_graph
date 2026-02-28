@@ -4,7 +4,7 @@ defmodule JidoSkillGraph.Query do
   """
 
   alias JidoSkillGraph.{Edge, SearchBackend, SkillFile, Snapshot, Telemetry}
-  alias JidoSkillGraph.SearchBackend.Basic, as: BasicSearch
+  alias JidoSkillGraph.SearchBackend.Indexed, as: IndexedSearch
 
   @type query_error ::
           :graph_not_loaded
@@ -144,7 +144,7 @@ defmodule JidoSkillGraph.Query do
           {:ok, [SearchBackend.result()]} | {:error, query_error()}
   def search(snapshot, graph_id, query, opts \\ []) do
     started_at = System.monotonic_time()
-    configured_backend = Keyword.get(opts, :search_backend, BasicSearch)
+    configured_backend = Keyword.get(opts, :search_backend, IndexedSearch)
 
     result =
       with {:ok, snapshot} <- ensure_graph(snapshot, graph_id),
@@ -269,7 +269,7 @@ defmodule JidoSkillGraph.Query do
   end
 
   defp search_backend(opts) do
-    backend = Keyword.get(opts, :search_backend, BasicSearch)
+    backend = Keyword.get(opts, :search_backend, IndexedSearch)
 
     if is_atom(backend) and Code.ensure_loaded?(backend) and
          function_exported?(backend, :search, 4) do
