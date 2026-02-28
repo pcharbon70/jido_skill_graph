@@ -23,6 +23,7 @@ defmodule JidoSkillGraph.MixProject do
       {:libgraph, "~> 0.16"},
       {:yaml_elixir, "~> 2.11"},
       {:telemetry, "~> 1.2"},
+      {:jido_signal, "~> 1.2", optional: true},
       {:file_system, "~> 1.1", optional: true},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev], runtime: false}

@@ -1,35 +1,39 @@
 defmodule JidoSkillGraph.JidoAdapter.SignalPublisher do
   @moduledoc """
-  Event publisher that prefers `jido_signal` when present and always emits telemetry.
+  Event publisher that emits telemetry and optionally publishes to `jido_signal`.
+
+  Pass `bus: ...` in `event_publisher_opts` to publish `Jido.Signal` events to
+  a bus managed by `jido_signal`.
   """
 
   @behaviour JidoSkillGraph.EventPublisher
+
+  alias Jido.Signal
+  alias Jido.Signal.Bus
 
   @impl true
   def publish(event_name, payload, opts) do
     metadata = Map.merge(payload, Map.new(Keyword.get(opts, :metadata, [])))
 
-    _ = maybe_emit_jido_signal(event_name, metadata)
+    _ = maybe_publish_jido_signal(event_name, metadata, opts)
     _ = emit_telemetry(event_name, metadata)
 
     :ok
   end
 
-  defp maybe_emit_jido_signal(event_name, metadata) do
-    candidates = [
-      {Jido.Signal, :emit, [event_name, metadata]},
-      {Jido.Signal, :publish, [event_name, metadata]},
-      {JidoSignal, :emit, [event_name, metadata]},
-      {JidoSignal, :publish, [event_name, metadata]}
-    ]
+  defp maybe_publish_jido_signal(event_name, metadata, opts) do
+    case Keyword.get(opts, :bus) do
+      nil ->
+        :ok
 
-    Enum.find_value(candidates, :ok, fn {module, function, args} ->
-      if Code.ensure_loaded?(module) and function_exported?(module, function, length(args)) do
-        apply(module, function, args)
-      else
-        false
-      end
-    end)
+      bus ->
+        with {:ok, signal} <- Signal.new(event_name, metadata, source: "jido_skill_graph"),
+             {:ok, _recorded_signals} <- Bus.publish(bus, [signal]) do
+          :ok
+        else
+          {:error, reason} -> {:error, {:jido_signal_publish_failed, reason}}
+        end
+    end
   end
 
   defp emit_telemetry(event_name, metadata) do
