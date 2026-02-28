@@ -3,7 +3,7 @@ Mix.Task.run("app.start")
 defmodule SearchBenchmark do
   @moduledoc false
 
-  alias JidoSkillGraph.Snapshot
+  alias JidoSkillGraph.{BenchmarkGuardrails, Snapshot}
 
   @default_queries ["alpha", "core", "references", "beta", "a"]
   @default_backend_mode :indexed
@@ -25,7 +25,7 @@ defmodule SearchBenchmark do
       print_profile_suite_summary(reports)
     end
 
-    failures = evaluate_guardrails(opts, reports)
+    failures = BenchmarkGuardrails.evaluate(opts, reports)
 
     maybe_print_guardrail_summary(opts, failures)
     maybe_write_report(opts, reports, failures)
@@ -581,105 +581,9 @@ defmodule SearchBenchmark do
     end)
   end
 
-  defp evaluate_guardrails(opts, reports) do
-    if guardrails_configured?(opts) do
-      profiles = enforced_profiles(opts)
-
-      profiles
-      |> Enum.flat_map(fn profile ->
-        case Enum.find(reports, &(&1.profile == profile)) do
-          nil -> ["profile=#{profile} missing from benchmark report set"]
-          report -> evaluate_profile_guardrails(profile, opts, report)
-        end
-      end)
-    else
-      []
-    end
-  end
-
-  defp evaluate_profile_guardrails(profile, opts, report) do
-    []
-    |> maybe_add_memory_guardrail_failure(profile, opts, report)
-    |> maybe_add_speedup_guardrail_failure(profile, :p50, opts, report)
-    |> maybe_add_speedup_guardrail_failure(profile, :p95, opts, report)
-  end
-
-  defp maybe_add_memory_guardrail_failure(
-         failures,
-         _profile,
-         %{max_memory_delta_mb: nil},
-         _report
-       ),
-       do: failures
-
-  defp maybe_add_memory_guardrail_failure(
-         failures,
-         profile,
-         %{max_memory_delta_mb: threshold_mb},
-         report
-       ) do
-    memory_delta_mb = report.corpus.memory_delta_bytes / 1_048_576
-
-    if memory_delta_mb <= threshold_mb do
-      failures
-    else
-      failures ++
-        [
-          "profile=#{profile} memory_delta_mb=#{round_mb(report.corpus.memory_delta_bytes)} exceeds max_memory_delta_mb=#{Float.round(threshold_mb, 3)}"
-        ]
-    end
-  end
-
-  defp maybe_add_speedup_guardrail_failure(failures, profile, metric, opts, report) do
-    threshold = speedup_threshold(opts, metric)
-
-    if is_nil(threshold) do
-      failures
-    else
-      speedup = overall_speedup(report, metric)
-
-      cond do
-        is_nil(speedup) ->
-          failures ++
-            [
-              "profile=#{profile} requires both indexed/basic results to evaluate min_speedup_#{metric}"
-            ]
-
-        speedup >= threshold ->
-          failures
-
-        true ->
-          failures ++
-            [
-              "profile=#{profile} speedup_#{metric}=#{Float.round(speedup, 3)}x below min_speedup_#{metric}=#{Float.round(threshold, 3)}x"
-            ]
-      end
-    end
-  end
-
-  defp speedup_threshold(opts, :p50), do: opts.min_speedup_p50
-  defp speedup_threshold(opts, :p95), do: opts.min_speedup_p95
-
-  defp overall_speedup(report, metric) do
-    indexed =
-      get_in(report, [:results, :indexed, :overall, speedup_field(metric)])
-
-    basic =
-      get_in(report, [:results, :basic, :overall, speedup_field(metric)])
-
-    if is_number(indexed) and indexed > 0 and is_number(basic) do
-      basic / indexed
-    else
-      nil
-    end
-  end
-
-  defp speedup_field(:p50), do: :p50_ms
-  defp speedup_field(:p95), do: :p95_ms
-
   defp maybe_print_guardrail_summary(opts, failures) do
     cond do
-      not guardrails_configured?(opts) ->
+      not BenchmarkGuardrails.configured?(opts) ->
         :ok
 
       failures == [] ->
@@ -697,16 +601,6 @@ defmodule SearchBenchmark do
     end
   end
 
-  defp guardrails_configured?(opts) do
-    not is_nil(opts.min_speedup_p50) or
-      not is_nil(opts.min_speedup_p95) or
-      not is_nil(opts.max_memory_delta_mb)
-  end
-
-  defp enforced_profiles(%{enforce_profiles: profiles}) when is_list(profiles), do: profiles
-  defp enforced_profiles(%{profile_mode: :all}), do: [:small, :medium, :large]
-  defp enforced_profiles(%{profile_mode: profile}), do: [profile]
-
   defp maybe_write_report(%{output_path: nil}, _reports, _failures), do: :ok
 
   defp maybe_write_report(opts, reports, failures) do
@@ -723,12 +617,12 @@ defmodule SearchBenchmark do
         queries: opts.queries
       },
       guardrails: %{
-        configured: guardrails_configured?(opts),
-        enforced_profiles: enforced_profiles(opts),
+        configured: BenchmarkGuardrails.configured?(opts),
+        enforced_profiles: BenchmarkGuardrails.enforced_profiles(opts),
         min_speedup_p50: opts.min_speedup_p50,
         min_speedup_p95: opts.min_speedup_p95,
         max_memory_delta_mb: opts.max_memory_delta_mb,
-        status: guardrail_status(opts, failures),
+        status: BenchmarkGuardrails.status(opts, failures),
         failures: failures
       },
       reports: reports
@@ -738,14 +632,6 @@ defmodule SearchBenchmark do
     :ok = File.write(output_path, Jason.encode!(payload, pretty: true))
     IO.puts("\nreport_written=#{output_path}")
     :ok
-  end
-
-  defp guardrail_status(opts, failures) do
-    if guardrails_configured?(opts) do
-      if failures == [], do: :pass, else: :fail
-    else
-      :not_configured
-    end
   end
 
   defp print_backend_stats(label, stats, queries) do
