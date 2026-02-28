@@ -1,6 +1,8 @@
 defmodule JidoSkillGraph.EventPublisherTest do
   use ExUnit.Case, async: true
 
+  alias Jido.Signal
+  alias Jido.Signal.Bus
   alias JidoSkillGraph.EventPublisher
   alias JidoSkillGraph.JidoAdapter.SignalPublisher
 
@@ -58,6 +60,27 @@ defmodule JidoSkillGraph.EventPublisherTest do
 
     assert_receive {:telemetry_event, [:jido_skill_graph, :loaded], %{count: 1},
                     %{graph_id: "basic", origin: :test}}
+  end
+
+  test "signal publisher publishes to jido_signal bus when configured" do
+    bus_name = :"jsg-signal-bus-#{System.unique_integer([:positive])}"
+    {:ok, _bus_pid} = Bus.start_link(name: bus_name)
+    assert {:ok, _subscription_id} = Bus.subscribe(bus_name, "skills_graph.*")
+
+    assert :ok =
+             SignalPublisher.publish(
+               "skills_graph.loaded",
+               %{graph_id: "basic"},
+               bus: bus_name,
+               metadata: [origin: :test]
+             )
+
+    assert_receive {:signal,
+                    %Signal{
+                      type: "skills_graph.loaded",
+                      data: %{graph_id: "basic", origin: :test},
+                      source: "jido_skill_graph"
+                    }}
   end
 
   def handle_telemetry(event, measurements, metadata, %{test_pid: test_pid}) do
