@@ -65,6 +65,12 @@ Run all profiles in one pass and write a JSON report:
 mix run scripts/search_benchmark.exs --profile all --backend both --iterations 20 --warmup-iterations 5 --output tmp/search_benchmark_report.json
 ```
 
+Fail CI on perf regression with guardrails:
+
+```sh
+mix run scripts/search_benchmark.exs --profile all --backend both --iterations 10 --warmup-iterations 2 --min-speedup-p50 5.0 --min-speedup-p95 4.0 --max-memory-delta-mb 80 --output tmp/search_benchmark_guardrail.json
+```
+
 ## Local Development Configuration Example
 
 Supervised runtime with explicit store/loader names:

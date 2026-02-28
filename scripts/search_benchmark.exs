@@ -25,7 +25,14 @@ defmodule SearchBenchmark do
       print_profile_suite_summary(reports)
     end
 
-    maybe_write_report(opts.output_path, reports)
+    failures = evaluate_guardrails(opts, reports)
+
+    maybe_print_guardrail_summary(opts, failures)
+    maybe_write_report(opts, reports, failures)
+
+    if failures != [] do
+      System.halt(2)
+    end
   end
 
   defp parse_args(args) do
@@ -39,6 +46,10 @@ defmodule SearchBenchmark do
           backend: :string,
           profile: :string,
           output: :string,
+          min_speedup_p50: :string,
+          min_speedup_p95: :string,
+          max_memory_delta_mb: :string,
+          enforce_profiles: :string,
           queries: :string,
           iterations: :integer,
           warmup_iterations: :integer,
@@ -51,6 +62,23 @@ defmodule SearchBenchmark do
     backend_mode = parsed |> Keyword.get(:backend, "indexed") |> normalize_backend_mode()
     profile_mode = parsed |> Keyword.get(:profile, "fixture") |> normalize_profile_mode()
     output_path = parsed |> Keyword.get(:output) |> normalize_output_path()
+
+    min_speedup_p50 =
+      parsed |> Keyword.get(:min_speedup_p50) |> normalize_positive_threshold(:min_speedup_p50)
+
+    min_speedup_p95 =
+      parsed |> Keyword.get(:min_speedup_p95) |> normalize_positive_threshold(:min_speedup_p95)
+
+    max_memory_delta_mb =
+      parsed
+      |> Keyword.get(:max_memory_delta_mb)
+      |> normalize_non_negative_threshold(:max_memory_delta_mb)
+
+    enforce_profiles =
+      parsed
+      |> Keyword.get(:enforce_profiles)
+      |> normalize_enforce_profiles()
+
     iterations = max(1, Keyword.get(parsed, :iterations, @default_iterations))
 
     warmup_iterations =
@@ -71,6 +99,10 @@ defmodule SearchBenchmark do
       backend_mode: backend_mode,
       profile_mode: profile_mode,
       output_path: output_path,
+      min_speedup_p50: min_speedup_p50,
+      min_speedup_p95: min_speedup_p95,
+      max_memory_delta_mb: max_memory_delta_mb,
+      enforce_profiles: enforce_profiles,
       queries: queries,
       iterations: iterations,
       warmup_iterations: warmup_iterations,
@@ -114,10 +146,93 @@ defmodule SearchBenchmark do
   defp normalize_output_path(path) when is_binary(path), do: Path.expand(path)
   defp normalize_output_path(_path), do: nil
 
+  defp normalize_positive_threshold(nil, _name), do: nil
+
+  defp normalize_positive_threshold(value, name) do
+    case parse_number(value) do
+      {:ok, number} when number > 0.0 ->
+        number
+
+      {:ok, _number} ->
+        warn_invalid_threshold(name, value, "must be > 0")
+        nil
+
+      :error ->
+        warn_invalid_threshold(name, value, "must be a number")
+        nil
+    end
+  end
+
+  defp normalize_non_negative_threshold(nil, _name), do: nil
+
+  defp normalize_non_negative_threshold(value, name) do
+    case parse_number(value) do
+      {:ok, number} when number >= 0.0 ->
+        number
+
+      {:ok, _number} ->
+        warn_invalid_threshold(name, value, "must be >= 0")
+        nil
+
+      :error ->
+        warn_invalid_threshold(name, value, "must be a number")
+        nil
+    end
+  end
+
+  defp normalize_enforce_profiles(nil), do: nil
+
+  defp normalize_enforce_profiles(value) when is_binary(value) do
+    value
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.flat_map(&expand_profile_token/1)
+    |> Enum.uniq()
+    |> case do
+      [] -> nil
+      profiles -> profiles
+    end
+  end
+
+  defp normalize_enforce_profiles(_value), do: nil
+
   defp unknown_profile_mode(other) do
     IO.warn("unknown profile '#{other}', falling back to #{@default_profile_mode}")
     @default_profile_mode
   end
+
+  defp expand_profile_token(token) when is_binary(token) do
+    case token |> String.trim() |> String.downcase() do
+      "fixture" -> [:fixture]
+      "small" -> [:small]
+      "medium" -> [:medium]
+      "large" -> [:large]
+      "all" -> [:fixture, :small, :medium, :large]
+      other -> warn_unknown_enforced_profile(other)
+    end
+  end
+
+  defp warn_unknown_enforced_profile(profile) do
+    IO.warn("unknown enforced profile '#{profile}', ignoring")
+    []
+  end
+
+  defp warn_invalid_threshold(name, value, reason) do
+    IO.warn("invalid #{name}=#{inspect(value)} (#{reason}), ignoring")
+  end
+
+  defp parse_number(value) when is_integer(value), do: {:ok, value / 1}
+  defp parse_number(value) when is_float(value), do: {:ok, value}
+
+  defp parse_number(value) when is_binary(value) do
+    case Float.parse(String.trim(value)) do
+      {number, ""} -> {:ok, number}
+      _ -> :error
+    end
+  end
+
+  defp parse_number(_value), do: :error
 
   defp run_profiles(%{profile_mode: :all} = opts) do
     [:fixture, :small, :medium, :large]
@@ -466,11 +581,156 @@ defmodule SearchBenchmark do
     end)
   end
 
-  defp maybe_write_report(nil, _reports), do: :ok
+  defp evaluate_guardrails(opts, reports) do
+    if guardrails_configured?(opts) do
+      profiles = enforced_profiles(opts)
 
-  defp maybe_write_report(output_path, reports) do
+      profiles
+      |> Enum.flat_map(fn profile ->
+        case Enum.find(reports, &(&1.profile == profile)) do
+          nil -> ["profile=#{profile} missing from benchmark report set"]
+          report -> evaluate_profile_guardrails(profile, opts, report)
+        end
+      end)
+    else
+      []
+    end
+  end
+
+  defp evaluate_profile_guardrails(profile, opts, report) do
+    []
+    |> maybe_add_memory_guardrail_failure(profile, opts, report)
+    |> maybe_add_speedup_guardrail_failure(profile, :p50, opts, report)
+    |> maybe_add_speedup_guardrail_failure(profile, :p95, opts, report)
+  end
+
+  defp maybe_add_memory_guardrail_failure(
+         failures,
+         _profile,
+         %{max_memory_delta_mb: nil},
+         _report
+       ),
+       do: failures
+
+  defp maybe_add_memory_guardrail_failure(
+         failures,
+         profile,
+         %{max_memory_delta_mb: threshold_mb},
+         report
+       ) do
+    memory_delta_mb = report.corpus.memory_delta_bytes / 1_048_576
+
+    if memory_delta_mb <= threshold_mb do
+      failures
+    else
+      failures ++
+        [
+          "profile=#{profile} memory_delta_mb=#{round_mb(report.corpus.memory_delta_bytes)} exceeds max_memory_delta_mb=#{Float.round(threshold_mb, 3)}"
+        ]
+    end
+  end
+
+  defp maybe_add_speedup_guardrail_failure(failures, profile, metric, opts, report) do
+    threshold = speedup_threshold(opts, metric)
+
+    if is_nil(threshold) do
+      failures
+    else
+      speedup = overall_speedup(report, metric)
+
+      cond do
+        is_nil(speedup) ->
+          failures ++
+            [
+              "profile=#{profile} requires both indexed/basic results to evaluate min_speedup_#{metric}"
+            ]
+
+        speedup >= threshold ->
+          failures
+
+        true ->
+          failures ++
+            [
+              "profile=#{profile} speedup_#{metric}=#{Float.round(speedup, 3)}x below min_speedup_#{metric}=#{Float.round(threshold, 3)}x"
+            ]
+      end
+    end
+  end
+
+  defp speedup_threshold(opts, :p50), do: opts.min_speedup_p50
+  defp speedup_threshold(opts, :p95), do: opts.min_speedup_p95
+
+  defp overall_speedup(report, metric) do
+    indexed =
+      get_in(report, [:results, :indexed, :overall, speedup_field(metric)])
+
+    basic =
+      get_in(report, [:results, :basic, :overall, speedup_field(metric)])
+
+    if is_number(indexed) and indexed > 0 and is_number(basic) do
+      basic / indexed
+    else
+      nil
+    end
+  end
+
+  defp speedup_field(:p50), do: :p50_ms
+  defp speedup_field(:p95), do: :p95_ms
+
+  defp maybe_print_guardrail_summary(opts, failures) do
+    cond do
+      not guardrails_configured?(opts) ->
+        :ok
+
+      failures == [] ->
+        IO.puts("\nguardrail_status=pass")
+        :ok
+
+      true ->
+        IO.puts("\nguardrail_status=fail")
+
+        Enum.each(failures, fn failure ->
+          IO.puts("guardrail_failure=#{failure}")
+        end)
+
+        :ok
+    end
+  end
+
+  defp guardrails_configured?(opts) do
+    not is_nil(opts.min_speedup_p50) or
+      not is_nil(opts.min_speedup_p95) or
+      not is_nil(opts.max_memory_delta_mb)
+  end
+
+  defp enforced_profiles(%{enforce_profiles: profiles}) when is_list(profiles), do: profiles
+  defp enforced_profiles(%{profile_mode: :all}), do: [:small, :medium, :large]
+  defp enforced_profiles(%{profile_mode: profile}), do: [profile]
+
+  defp maybe_write_report(%{output_path: nil}, _reports, _failures), do: :ok
+
+  defp maybe_write_report(opts, reports, failures) do
+    output_path = opts.output_path
+
     payload = %{
       generated_at: DateTime.utc_now() |> DateTime.to_iso8601(),
+      options: %{
+        backend_mode: opts.backend_mode,
+        profile_mode: opts.profile_mode,
+        iterations: opts.iterations,
+        warmup_iterations: opts.warmup_iterations,
+        limit: opts.limit,
+        queries: opts.queries
+      },
+      guardrails: %{
+        configured: guardrails_configured?(opts),
+        enforced_profiles: enforced_profiles(opts),
+        min_speedup_p50: opts.min_speedup_p50,
+        min_speedup_p95: opts.min_speedup_p95,
+        max_memory_delta_mb: opts.max_memory_delta_mb,
+        status: guardrail_status(opts, failures),
+        failures: failures
+      },
       reports: reports
     }
 
@@ -478,6 +738,14 @@ defmodule SearchBenchmark do
     :ok = File.write(output_path, Jason.encode!(payload, pretty: true))
     IO.puts("\nreport_written=#{output_path}")
     :ok
+  end
+
+  defp guardrail_status(opts, failures) do
+    if guardrails_configured?(opts) do
+      if failures == [], do: :pass, else: :fail
+    else
+      :not_configured
+    end
   end
 
   defp print_backend_stats(label, stats, queries) do
