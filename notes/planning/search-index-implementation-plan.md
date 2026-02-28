@@ -2,7 +2,7 @@
 
 Date: 2026-02-27
 Status: Proposed
-Owner: jido_skill_graph maintainers
+Owner: jido_skillset maintainers
 
 ## 1. Goal
 
@@ -27,7 +27,7 @@ Out of scope:
 
 ## 3. Current Baseline (What We Are Replacing)
 
-Current behavior in `JidoSkillGraph.SearchBackend.Basic`:
+Current behavior in `Jido.Skillset.SearchBackend.Basic`:
 
 - Scans all nodes on each query
 - Reads/parses markdown body files during search when `:body` is included
@@ -61,8 +61,8 @@ Changes:
 
 - Add telemetry around search execution duration/result count in search path.
 - Add backend toggle:
-  - `search_backend: JidoSkillGraph.SearchBackend.Basic` (existing)
-  - `search_backend: JidoSkillGraph.SearchBackend.Indexed` (new)
+  - `search_backend: Jido.Skillset.SearchBackend.Basic` (existing)
+  - `search_backend: Jido.Skillset.SearchBackend.Indexed` (new)
 - Keep Basic backend as fallback during rollout.
 
 Deliverables:
@@ -85,9 +85,9 @@ Define index structures and include them in snapshot lifecycle.
 Changes:
 
 - Introduce new module(s):
-  - `lib/jido_skill_graph/search_index.ex` (types + builder helpers)
-  - `lib/jido_skill_graph/search_index/tokenizer.ex` (normalization/tokenization)
-- Extend `JidoSkillGraph.Snapshot` with optional in-memory search artifacts:
+  - `lib/jido_skillset/search_index.ex` (types + builder helpers)
+  - `lib/jido_skillset/search_index/tokenizer.ex` (normalization/tokenization)
+- Extend `Jido.Skillset.Snapshot` with optional in-memory search artifacts:
   - index metadata (document count, avg field lengths, build version)
   - optional body cache metadata for excerpts
 - Keep backward compatibility:
@@ -116,7 +116,7 @@ Build index once during reload/build path.
 
 Changes:
 
-- Update `JidoSkillGraph.Builder`:
+- Update `Jido.Skillset.Builder`:
   - tokenize indexed fields for each node
   - parse body once during build for indexing payload
   - compute document frequencies and field stats
@@ -146,7 +146,7 @@ Publish index into ETS for low-latency concurrent reads.
 
 Changes:
 
-- Extend `JidoSkillGraph.Store` to create and populate additional ETS table(s):
+- Extend `Jido.Skillset.Store` to create and populate additional ETS table(s):
   - postings table
   - document stats table
   - optional trigram table placeholder (for later phase)
@@ -176,7 +176,7 @@ Replace O(N) scan with postings-based retrieval and weighted ranking.
 
 Changes:
 
-- Add `lib/jido_skill_graph/search_backend/indexed.ex`
+- Add `lib/jido_skillset/search_backend/indexed.ex`
 - Implement candidate generation:
   - union/intersection on postings for query terms
   - optional AND/OR mode (default OR with scoring penalties for partial matches)
@@ -254,15 +254,15 @@ Make indexed search the default runtime path while retaining explicit fallback.
 
 Changes:
 
-- Set `JidoSkillGraph.Query.search/4` default backend to
-  `JidoSkillGraph.SearchBackend.Indexed`.
+- Set `Jido.Skillset.Query.search/4` default backend to
+  `Jido.Skillset.SearchBackend.Indexed`.
 - Keep explicit backend override support so callers can still pass
-  `search_backend: JidoSkillGraph.SearchBackend.Basic` when needed.
+  `search_backend: Jido.Skillset.SearchBackend.Basic` when needed.
 - Update telemetry expectations and regression tests for default-backend behavior.
 
 Acceptance criteria:
 
-- `JidoSkillGraph.search/3` uses indexed backend when `search_backend` is omitted.
+- `Jido.Skillset.search/3` uses indexed backend when `search_backend` is omitted.
 - Existing override semantics remain backward compatible.
 - Search telemetry backend metadata reflects indexed default path.
 
@@ -434,7 +434,7 @@ testable library module.
 
 Changes:
 
-- Add `JidoSkillGraph.BenchmarkGuardrails` for:
+- Add `Jido.Skillset.BenchmarkGuardrails` for:
   - threshold configuration detection
   - enforced profile selection
   - profile-level guardrail evaluation
@@ -489,7 +489,7 @@ benchmark execution.
 
 Changes:
 
-- Extend `JidoSkillGraph.BenchmarkGuardrails.Config` validation rules:
+- Extend `Jido.Skillset.BenchmarkGuardrails.Config` validation rules:
   - `min_speedup_p50` and `min_speedup_p95` must be numeric and `> 0`
   - `max_memory_delta_mb` must be numeric and `>= 0`
   - `enforce_profiles` must be an array of known profile names

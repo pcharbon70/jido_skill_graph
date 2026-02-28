@@ -1,10 +1,10 @@
-# JidoSkillGraph
+# Jido.Skillset
 
-`JidoSkillGraph` is a standalone Elixir library for building and querying markdown-based skill graphs.
+`Jido.Skillset` is a standalone Elixir library for building and querying markdown-based skill graphs.
 
 ## Current Status
 
-`jido_skill_graph` focuses on:
+`jido_skillset` focuses on:
 
 - markdown skill discovery/parsing
 - graph snapshot build/reload/runtime
@@ -93,7 +93,7 @@ Supervised runtime with explicit store/loader names:
 
 ```elixir
 children = [
-  {JidoSkillGraph,
+  {Jido.Skillset,
    name: MyApp.SkillGraph,
    store: [name: MyApp.SkillGraph.Store],
    loader: [
@@ -113,22 +113,22 @@ children = [
 Default search uses the indexed backend:
 
 ```elixir
-JidoSkillGraph.search("local-dev", "alpha references", store: MyApp.SkillGraph.Store)
+Jido.Skillset.search("local-dev", "alpha references", store: MyApp.SkillGraph.Store)
 ```
 
 Force legacy substring behavior explicitly:
 
 ```elixir
-JidoSkillGraph.search("local-dev", "alpha references",
+Jido.Skillset.search("local-dev", "alpha references",
   store: MyApp.SkillGraph.Store,
-  search_backend: JidoSkillGraph.SearchBackend.Basic
+  search_backend: Jido.Skillset.SearchBackend.Basic
 )
 ```
 
 Enable typo tolerance in indexed mode:
 
 ```elixir
-JidoSkillGraph.search("local-dev", "alpah references",
+Jido.Skillset.search("local-dev", "alpah references",
   store: MyApp.SkillGraph.Store,
   operator: :and,
   fuzzy: true,

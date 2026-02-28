@@ -1,9 +1,9 @@
-defmodule JidoSkillGraph.MixProject do
+defmodule Jido.Skillset.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :jido_skill_graph,
+      app: :jido_skillset,
       version: "0.1.0",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
@@ -14,7 +14,7 @@ defmodule JidoSkillGraph.MixProject do
   def application do
     [
       extra_applications: [:logger],
-      mod: {JidoSkillGraph.Application, []}
+      mod: {Jido.Skillset.Application, []}
     ]
   end
 

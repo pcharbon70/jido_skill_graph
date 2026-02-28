@@ -1,7 +1,7 @@
 # Support Policy
 
 This document defines the minimum supported language/runtime versions for
-`jido_skill_graph`.
+`jido_skillset`.
 
 ## Minimum Supported Versions
 
