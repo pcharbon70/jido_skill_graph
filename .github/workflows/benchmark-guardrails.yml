@@ -5,6 +5,7 @@ on:
     paths:
       - "lib/**"
       - "scripts/search_benchmark.exs"
+      - "scripts/search_benchmark_guardrails.ci.json"
       - "test/fixtures/phase4/basic/**"
       - "mix.exs"
       - "mix.lock"
@@ -15,6 +16,7 @@ on:
     paths:
       - "lib/**"
       - "scripts/search_benchmark.exs"
+      - "scripts/search_benchmark_guardrails.ci.json"
       - "test/fixtures/phase4/basic/**"
       - "mix.exs"
       - "mix.lock"
@@ -70,10 +72,7 @@ jobs:
           --queries alpha,core,references
           --iterations 5
           --warmup-iterations 2
-          --enforce-profiles small,medium,large
-          --min-speedup-p50 3.0
-          --min-speedup-p95 2.5
-          --max-memory-delta-mb 120
+          --guardrail-config scripts/search_benchmark_guardrails.ci.json
           --output tmp/search_benchmark_ci_report.json
 
       - name: Add benchmark summary
@@ -85,13 +84,19 @@ jobs:
           fi
 
           status="$(jq -r '.guardrails.status' tmp/search_benchmark_ci_report.json)"
+          enforced_profiles="$(jq -r '.guardrails.enforced_profiles | join(\",\")' tmp/search_benchmark_ci_report.json)"
+          min_speedup_p50="$(jq -r '.guardrails.min_speedup_p50 // \"n/a\"' tmp/search_benchmark_ci_report.json)"
+          min_speedup_p95="$(jq -r '.guardrails.min_speedup_p95 // \"n/a\"' tmp/search_benchmark_ci_report.json)"
+          max_memory_delta_mb="$(jq -r '.guardrails.max_memory_delta_mb // \"n/a\"' tmp/search_benchmark_ci_report.json)"
+          config_path="$(jq -r '.guardrails.config_path // \"n/a\"' tmp/search_benchmark_ci_report.json)"
 
           {
             echo "## Benchmark Guardrails"
             echo ""
             echo "- status: ${status}"
-            echo "- profile: all (enforced: small,medium,large)"
-            echo "- thresholds: p50>=3.0x p95>=2.5x memory<=120MB"
+            echo "- profile: all (enforced: ${enforced_profiles})"
+            echo "- config: ${config_path}"
+            echo "- thresholds: p50>=${min_speedup_p50}x p95>=${min_speedup_p95}x memory<=${max_memory_delta_mb}MB"
           } >> "$GITHUB_STEP_SUMMARY"
 
           jq -r '.guardrails.failures[]?' tmp/search_benchmark_ci_report.json | while read -r failure; do

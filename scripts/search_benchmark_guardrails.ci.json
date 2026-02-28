@@ -1,0 +1,6 @@
+{
+  "enforce_profiles": ["small", "medium", "large"],
+  "min_speedup_p50": 3.0,
+  "min_speedup_p95": 2.5,
+  "max_memory_delta_mb": 120
+}
