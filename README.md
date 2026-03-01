@@ -16,6 +16,18 @@
 - Elixir `>= 1.17`
 - Erlang/OTP `>= 27`
 
+## Installation
+
+Add `jido_skillset` to your dependencies:
+
+```elixir
+def deps do
+  [
+    {:jido_skillset, "~> 0.1.0"}
+  ]
+end
+```
+
 ## Development
 
 Install toolchain and dependencies:
